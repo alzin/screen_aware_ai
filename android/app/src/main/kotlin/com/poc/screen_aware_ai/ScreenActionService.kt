@@ -172,6 +172,7 @@ class ScreenActionService : AccessibilityService() {
                 val className = node.className?.toString()?.substringAfterLast('.') ?: "View"
 
                 val element = JSONObject().apply {
+                    put("id", elementCount)
                     put("type", className)
                     if (!text.isNullOrBlank()) put("text", text)
                     if (!contentDesc.isNullOrBlank()) put("desc", contentDesc)

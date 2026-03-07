@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'ai_service.dart';
 import 'voice_service.dart';
@@ -218,10 +219,16 @@ class AgentController extends ChangeNotifier {
 
       // 1b. Fetch UI tree from accessibility service (runs in parallel-ready)
       String? uiTree;
+      List<Map<String, dynamic>> uiElements = [];
       try {
         uiTree = await _screenCapture.getUITree();
+        if (uiTree != null) {
+          final parsed = jsonDecode(uiTree) as Map<String, dynamic>;
+          final elements = parsed['elements'] as List<dynamic>? ?? [];
+          uiElements = elements.cast<Map<String, dynamic>>();
+        }
       } catch (e) {
-        print('UI tree fetch failed: $e');
+        print('UI tree fetch/parse failed: $e');
       }
 
       // 2. Send to AI (with screenshot + UI tree)
@@ -256,7 +263,7 @@ class AgentController extends ChangeNotifier {
         notifyListeners();
 
         for (final action in agentResponse.actions) {
-          await _executeAction(action);
+          await _executeAction(action, uiElements);
         }
 
         // Brief wait after actions for the UI to settle
@@ -317,8 +324,27 @@ class AgentController extends ChangeNotifier {
     return null;
   }
 
+  /// Resolve element ID from the UI tree to (cx, cy) coordinates.
+  /// Returns null if the element is not found.
+  Map<String, double>? _resolveElementCoordinates(
+      int elementId, List<Map<String, dynamic>> uiElements) {
+    for (final element in uiElements) {
+      if (element['id'] == elementId) {
+        final bounds = element['bounds'] as Map<String, dynamic>?;
+        if (bounds != null) {
+          return {
+            'x': (bounds['cx'] as num).toDouble(),
+            'y': (bounds['cy'] as num).toDouble(),
+          };
+        }
+      }
+    }
+    return null;
+  }
+
   /// Execute a single agent action.
-  Future<void> _executeAction(AgentAction action) async {
+  Future<void> _executeAction(
+      AgentAction action, List<Map<String, dynamic>> uiElements) async {
     // Actions that require the accessibility service
     const accessibilityActions = {'tap', 'type', 'swipe', 'back', 'home'};
 
@@ -349,8 +375,26 @@ class AgentController extends ChangeNotifier {
           break;
 
         case 'tap':
-          final x = (action.params['x'] as num?)?.toDouble() ?? 0;
-          final y = (action.params['y'] as num?)?.toDouble() ?? 0;
+          double x, y;
+          // Prefer element-based tap (resolve coordinates from UI tree)
+          final elementId = action.params['element'] as num?;
+          if (elementId != null) {
+            final coords =
+                _resolveElementCoordinates(elementId.toInt(), uiElements);
+            if (coords != null) {
+              x = coords['x']!;
+              y = coords['y']!;
+            } else {
+              print(
+                  'Element $elementId not found in UI tree, falling back to raw coordinates');
+              x = (action.params['x'] as num?)?.toDouble() ?? 0;
+              y = (action.params['y'] as num?)?.toDouble() ?? 0;
+            }
+          } else {
+            // Fallback to raw coordinates if LLM still provides them
+            x = (action.params['x'] as num?)?.toDouble() ?? 0;
+            y = (action.params['y'] as num?)?.toDouble() ?? 0;
+          }
           await _screenCapture.performTap(x, y);
           await Future.delayed(const Duration(milliseconds: 500));
           break;
