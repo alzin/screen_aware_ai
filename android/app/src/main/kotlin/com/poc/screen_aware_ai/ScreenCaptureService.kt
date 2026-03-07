@@ -40,6 +40,9 @@ class ScreenCaptureService : Service() {
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
+    private var projectionCallback: MediaProjection.Callback? = null
+    // Generation counter to guard against stale callbacks
+    private var projectionGeneration = 0L
     var screenWidth = 0
         private set
     var screenHeight = 0
@@ -84,13 +87,31 @@ class ScreenCaptureService : Service() {
     fun initializeProjection(resultCode: Int, data: Intent) {
         Log.d(TAG, "initializeProjection: setting up with resultCode=$resultCode")
 
-        // Clean up any existing resources first
+        // IMPORTANT: Unregister the old callback BEFORE stopping the old projection.
+        // If we don't, the old onStop callback fires asynchronously on the main looper
+        // AFTER the new resources are set up, wiping them out.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            projectionCallback?.let { cb ->
+                try {
+                    mediaProjection?.unregisterCallback(cb)
+                    Log.d(TAG, "initializeProjection: unregistered old callback")
+                } catch (e: Exception) {
+                    Log.w(TAG, "initializeProjection: failed to unregister old callback", e)
+                }
+            }
+            projectionCallback = null
+        }
+
+        // Now safely clean up old resources — no callback will fire
         virtualDisplay?.release()
         virtualDisplay = null
         imageReader?.close()
         imageReader = null
         mediaProjection?.stop()
         mediaProjection = null
+
+        // Increment generation so any leaked stale callbacks become no-ops
+        val currentGeneration = ++projectionGeneration
 
         try {
             val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
@@ -103,16 +124,23 @@ class ScreenCaptureService : Service() {
 
             // Android 14+ requires registering a callback BEFORE createVirtualDisplay
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                mediaProjection!!.registerCallback(object : MediaProjection.Callback() {
+                val callback = object : MediaProjection.Callback() {
                     override fun onStop() {
-                        Log.d(TAG, "MediaProjection.Callback: onStop — projection revoked")
+                        // Guard: ignore if this callback belongs to a stale generation
+                        if (projectionGeneration != currentGeneration) {
+                            Log.d(TAG, "MediaProjection.Callback: onStop for stale generation $currentGeneration (current=$projectionGeneration), ignoring")
+                            return
+                        }
+                        Log.d(TAG, "MediaProjection.Callback: onStop — projection revoked by system")
                         virtualDisplay?.release()
                         virtualDisplay = null
                         imageReader?.close()
                         imageReader = null
                         mediaProjection = null
                     }
-                }, Handler(Looper.getMainLooper()))
+                }
+                projectionCallback = callback
+                mediaProjection!!.registerCallback(callback, Handler(Looper.getMainLooper()))
             }
 
             setupVirtualDisplay()
@@ -151,15 +179,27 @@ class ScreenCaptureService : Service() {
             return
         }
 
+        // Strategy 1: Try to acquire the latest available frame directly.
+        // This is the fastest path and avoids timeouts when the display
+        // hasn't produced a new frame (e.g., static screen content).
+        // The frame in the buffer IS the current screen — no need to drain and wait.
+        try {
+            val image = reader.acquireLatestImage()
+            if (image != null) {
+                val path = saveImageToFile(context, image)
+                callback(path)
+                return
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "captureScreen: direct acquire failed: ${e.message}")
+        }
+
+        // Strategy 2: No image available yet — wait for the next frame
+        // from the VirtualDisplay (e.g., right after initialization).
+        Log.d(TAG, "captureScreen: no image in buffer, waiting for next frame")
         val handler = Handler(Looper.getMainLooper())
         val done = AtomicBoolean(false)
 
-        // Drain any stale images so the next frame from the listener is fresh
-        try {
-            reader.acquireLatestImage()?.close()
-        } catch (_: Exception) {}
-
-        // Listen for the next fresh frame rendered to the ImageReader surface
         reader.setOnImageAvailableListener({ ir ->
             if (done.compareAndSet(false, true)) {
                 ir.setOnImageAvailableListener(null, null)
@@ -179,26 +219,14 @@ class ScreenCaptureService : Service() {
             }
         }, handler)
 
-        // Timeout fallback: if no new frame arrives within 3 seconds
+        // Timeout: 1.5 seconds (reduced from 3s since this is only the fallback path)
         handler.postDelayed({
             if (done.compareAndSet(false, true)) {
                 reader.setOnImageAvailableListener(null, null)
-                Log.w(TAG, "captureScreen: timed out waiting for frame, trying fallback")
-                try {
-                    val image = reader.acquireLatestImage()
-                    if (image != null) {
-                        val path = saveImageToFile(context, image)
-                        callback(path)
-                    } else {
-                        Log.w(TAG, "captureScreen: fallback acquireLatestImage also null")
-                        callback(null)
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "captureScreen: error in fallback", e)
-                    callback(null)
-                }
+                Log.w(TAG, "captureScreen: timed out waiting for frame (1.5s)")
+                callback(null)
             }
-        }, 3000)
+        }, 1500)
     }
 
     private fun saveImageToFile(context: Context, image: Image): String? {
@@ -258,6 +286,19 @@ class ScreenCaptureService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         Log.d(TAG, "onDestroy: cleaning up")
+        // Unregister callback before stopping to prevent it from running during cleanup
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            projectionCallback?.let { cb ->
+                try {
+                    mediaProjection?.unregisterCallback(cb)
+                } catch (e: Exception) {
+                    Log.w(TAG, "onDestroy: failed to unregister callback", e)
+                }
+            }
+            projectionCallback = null
+        }
+        // Increment generation to invalidate any leaked callbacks
+        projectionGeneration++
         virtualDisplay?.release()
         imageReader?.close()
         mediaProjection?.stop()

@@ -65,7 +65,18 @@ class AiService {
   bool get isConfigured => _apiKey != null && _apiKey!.isNotEmpty;
 
   static const _systemPrompt = '''
-You are an autonomous AI agent controlling an Android phone. You can SEE the screen via screenshots and PERFORM actions on it.
+You are an autonomous AI agent controlling an Android phone. You receive TWO sources of information each step:
+
+1. SCREENSHOT — a visual image of the current screen
+2. UI TREE — a JSON list of interactive/text elements with EXACT pixel bounds
+
+THE UI TREE gives you each element's:
+- "type": Android view class (e.g. Button, EditText, TextView, ImageView)
+- "text": visible text on the element (if any)
+- "desc": content description / accessibility label (if any)
+- "clickable": true if the element can be tapped
+- "editable": true if the element is a text input field
+- "bounds": {"cx": centerX, "cy": centerY, "w": width, "h": height} — EXACT pixel coordinates
 
 AVAILABLE ACTIONS:
 - {"type": "open_app", "package": "com.whatsapp"} — Launch an app by package name
@@ -98,26 +109,27 @@ COMMON APP PACKAGES:
 - Telegram: org.telegram.messenger
 - Facebook: com.facebook.katana
 - Spotify: com.spotify.music
+- ChatGPT: com.openai.chatgpt
 
-RULES:
+CRITICAL RULES:
 1. You MUST respond with ONLY valid JSON. No markdown, no explanation outside JSON.
-2. Look at the screenshot carefully. Identify what is on screen.
-3. When the user asks you to do something, plan and execute step by step.
-4. After performing actions, set "done": false so you get another screenshot to verify.
+2. Return EXACTLY ONE action per response. After each action you will receive a fresh screenshot and UI tree showing the result. Do NOT batch multiple actions.
+3. For taps: ALWAYS use cx/cy coordinates from the UI tree element bounds. Never guess coordinates from the screenshot alone.
+4. After performing an action, set "done": false to receive the updated screen.
 5. Set "done": true only when the user's request is fully completed or you've reported the info they asked for.
-6. The screen dimensions in pixels are provided with each message as [Screen: WxH pixels]. Use these exact dimensions to determine tap coordinates from the screenshot. Tap the CENTER of the target element.
-7. Keep "speak" concise — it will be read aloud to the user.
-8. If you cannot perform an action or need more info, explain in "speak" and set "done": true.
-9. When asked to read/describe screen content, read it from the screenshot, speak it, and set "done": true.
-10. Always provide your reasoning in "thought" before actions.
+6. Keep "speak" concise — it will be read aloud. Only include "speak" text when you have something meaningful to tell the user (e.g., task done, error, or asking for clarification). For intermediate steps, use an empty string.
+7. If you cannot perform an action or need more info, explain in "speak" and set "done": true.
+8. When asked to read/describe screen content, read it from the screenshot and UI tree, speak it, and set "done": true.
+9. Always provide your reasoning in "thought".
+10. Use the UI tree "package" field to confirm which app is in the foreground.
 
-RESPONSE FORMAT (strict JSON, no other text):
+RESPONSE FORMAT (strict JSON, one action only):
 {
-  "thought": "I see the home screen. I need to open WhatsApp to check messages.",
+  "thought": "I see the home screen. I need to open WhatsApp first.",
   "actions": [
     {"type": "open_app", "package": "com.whatsapp"}
   ],
-  "speak": "Opening WhatsApp for you.",
+  "speak": "",
   "done": false
 }
 ''';
@@ -135,18 +147,33 @@ RESPONSE FORMAT (strict JSON, no other text):
     _chat = _model!.startChat();
   }
 
-  /// Send a message with an optional screenshot and get a structured response.
-  Future<AgentResponse> agentChat(String message, {String? imagePath, Map<String, int>? screenSize}) async {
+  /// Send a message with an optional screenshot, screen size, and UI tree.
+  Future<AgentResponse> agentChat(
+    String message, {
+    String? imagePath,
+    Map<String, int>? screenSize,
+    String? uiTree,
+  }) async {
     if (!isConfigured) {
       return AgentResponse.fallback('AI not configured. Please set your API key.');
     }
 
     try {
-      // Prepend screen dimensions so the AI knows exact coordinate space
-      String fullMessage = message;
+      // Build the text message with metadata
+      final buffer = StringBuffer();
+
       if (screenSize != null) {
-        fullMessage = '[Screen: ${screenSize['width']}x${screenSize['height']} pixels] $message';
+        buffer.writeln('[Screen: ${screenSize['width']}x${screenSize['height']} pixels]');
       }
+
+      if (uiTree != null) {
+        buffer.writeln('[UI_TREE]');
+        buffer.writeln(uiTree);
+        buffer.writeln('[/UI_TREE]');
+      }
+
+      buffer.write(message);
+      final fullMessage = buffer.toString();
 
       Content content;
       if (imagePath != null) {

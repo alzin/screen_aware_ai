@@ -142,6 +142,16 @@ class AgentController extends ChangeNotifier {
       );
     }
 
+    // Check if accessibility service is enabled
+    final hasAccessibility = await _screenCapture.isAccessibilityEnabled();
+    if (!hasAccessibility) {
+      _addConversation(
+        '⚠️ Accessibility service not enabled. I can see the screen but cannot perform actions (tap, type, swipe). '
+        'Go to Settings → Accessibility → Screen Aware AI to enable it.',
+        false,
+      );
+    }
+
     _listenRetryCount = 0;
     _startListening();
   }
@@ -206,7 +216,15 @@ class AgentController extends ChangeNotifier {
         _lastScreenshotPath = screenshotPath;
       }
 
-      // 2. Send to AI
+      // 1b. Fetch UI tree from accessibility service (runs in parallel-ready)
+      String? uiTree;
+      try {
+        uiTree = await _screenCapture.getUITree();
+      } catch (e) {
+        print('UI tree fetch failed: $e');
+      }
+
+      // 2. Send to AI (with screenshot + UI tree)
       _setState(AgentState.analyzing);
       _statusMessage = '🤖 Thinking... (step $step)';
       notifyListeners();
@@ -215,6 +233,7 @@ class AgentController extends ChangeNotifier {
         currentMessage,
         imagePath: screenshotPath,
         screenSize: screenSize,
+        uiTree: uiTree,
       );
 
       // Show AI thought + speak in conversation
@@ -300,6 +319,21 @@ class AgentController extends ChangeNotifier {
 
   /// Execute a single agent action.
   Future<void> _executeAction(AgentAction action) async {
+    // Actions that require the accessibility service
+    const accessibilityActions = {'tap', 'type', 'swipe', 'back', 'home'};
+
+    if (accessibilityActions.contains(action.type)) {
+      final hasAccessibility = await _screenCapture.isAccessibilityEnabled();
+      if (!hasAccessibility) {
+        _addConversation(
+          '⚠️ Cannot execute "${action.type}" — accessibility service not enabled. '
+          'Please enable it in Settings → Accessibility → Screen Aware AI.',
+          false,
+        );
+        return;
+      }
+    }
+
     try {
       switch (action.type) {
         case 'open_app':

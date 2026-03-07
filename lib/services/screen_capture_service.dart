@@ -81,6 +81,18 @@ class ScreenCaptureManager {
     }
   }
 
+  /// Get the UI tree of the current foreground app via accessibility service.
+  /// Returns a JSON string with package name and element list, or null on error.
+  Future<String?> getUITree() async {
+    try {
+      final result = await _channel.invokeMethod<String>('getUITree');
+      return result;
+    } catch (e) {
+      print('Error getting UI tree: $e');
+      return null;
+    }
+  }
+
   /// Check if accessibility service is enabled
   Future<bool> isAccessibilityEnabled() async {
     try {

@@ -18,8 +18,9 @@ class MainActivity : FlutterActivity() {
     private var pendingResult: MethodChannel.Result? = null
     private var mediaProjectionManager: MediaProjectionManager? = null
 
-    // Store projection data so we can reinitialize the service if needed
-    private var projectionResultCode: Int = -1
+    // Store projection data so we can reinitialize the service if needed.
+    // IMPORTANT: Use 0 as sentinel — Activity.RESULT_OK is -1, so -1 can't be the default.
+    private var projectionResultCode: Int = 0
     private var projectionData: Intent? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -38,26 +39,43 @@ class MainActivity : FlutterActivity() {
                     val service = ScreenCaptureService.instance
                     if (service == null) {
                         // Service not running at all — try to restart if we have stored data
-                        if (projectionResultCode != -1 && projectionData != null) {
+                        if (projectionResultCode == Activity.RESULT_OK && projectionData != null) {
                             Log.w(TAG, "captureScreen: service is null, restarting with stored projection data")
-                            startCaptureService(projectionResultCode, projectionData!!)
-                            // Return error so Flutter side can retry after service starts
-                            result.error("NOT_INITIALIZED", "Service restarting, retry capture", null)
+                            try {
+                                startCaptureService(projectionResultCode, projectionData!!)
+                                // Return error so Flutter side can retry after service starts
+                                result.error("NOT_INITIALIZED", "Service restarting, retry capture", null)
+                            } catch (e: Exception) {
+                                // On Android 14+ the token may be single-use — need fresh permission
+                                Log.e(TAG, "captureScreen: failed to restart service with stored data", e)
+                                projectionData = null
+                                result.error("NO_SERVICE", "Screen capture token expired, need new permission", null)
+                            }
                         } else {
                             result.error("NO_SERVICE", "Screen capture service not running, need permission", null)
                         }
                     } else if (!service.isInitialized) {
                         // Service exists but imageReader is null — try to reinitialize
-                        if (projectionResultCode != -1 && projectionData != null) {
+                        if (projectionResultCode == Activity.RESULT_OK && projectionData != null) {
                             Log.w(TAG, "captureScreen: service not initialized, reinitializing with stored data")
-                            service.initializeProjection(projectionResultCode, projectionData!!)
-                            // If initialization succeeded, capture immediately
-                            if (service.isInitialized) {
-                                service.captureScreen(this) { path ->
-                                    result.success(path)
+                            try {
+                                service.initializeProjection(projectionResultCode, projectionData!!)
+                                // If initialization succeeded, capture immediately
+                                if (service.isInitialized) {
+                                    service.captureScreen(this) { path ->
+                                        result.success(path)
+                                    }
+                                } else {
+                                    result.error("NOT_INITIALIZED", "Failed to reinitialize, need new permission", null)
                                 }
-                            } else {
-                                result.error("NOT_INITIALIZED", "Failed to reinitialize, need new permission", null)
+                            } catch (e: SecurityException) {
+                                // Android 14+: projection token is single-use, can't be reused
+                                Log.e(TAG, "captureScreen: SecurityException — token expired, need new permission", e)
+                                projectionData = null
+                                result.error("NOT_INITIALIZED", "Projection token expired, need new permission", null)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "captureScreen: reinit failed", e)
+                                result.error("NOT_INITIALIZED", "Reinit failed: ${e.message}", null)
                             }
                         } else {
                             result.error("NOT_INITIALIZED", "Service not initialized, need permission", null)
@@ -154,6 +172,14 @@ class MainActivity : FlutterActivity() {
                         result.error("NO_SERVICE", "Accessibility service not enabled", null)
                     }
                 }
+                "getUITree" -> {
+                    val service = ScreenActionService.instance
+                    if (service != null) {
+                        result.success(service.getUITree())
+                    } else {
+                        result.error("NO_SERVICE", "Accessibility service not enabled", null)
+                    }
+                }
                 "openAccessibilitySettings" -> {
                     val intent = Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
                     intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
@@ -185,22 +211,21 @@ class MainActivity : FlutterActivity() {
 
                 startCaptureService(resultCode, data)
 
-                // Wait for the service to fully initialize before returning success
+                // Wait for the service to fully initialize before returning success.
+                // With the callback fix, onStartCommand should reliably initialize.
+                // Do NOT try to reinitialize with stored data here — on Android 14+
+                // the projection token is single-use and was already consumed by onStartCommand.
                 android.os.Handler(mainLooper).postDelayed({
                     val service = ScreenCaptureService.instance
                     if (service != null && service.isInitialized) {
                         Log.d(TAG, "onActivityResult: service initialized successfully")
                         pendingResult?.success(true)
                     } else {
-                        Log.w(TAG, "onActivityResult: service not initialized after 1s, trying direct init")
-                        // Try direct initialization as fallback
-                        if (service != null && projectionData != null) {
-                            service.initializeProjection(projectionResultCode, projectionData!!)
-                        }
-                        pendingResult?.success(service?.isInitialized == true)
+                        Log.w(TAG, "onActivityResult: service not initialized after 1.5s")
+                        pendingResult?.success(false)
                     }
                     pendingResult = null
-                }, 1000)
+                }, 1500)
             } else {
                 Log.w(TAG, "onActivityResult: permission denied or no data")
                 pendingResult?.success(false)
