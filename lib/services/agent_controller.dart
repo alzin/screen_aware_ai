@@ -196,19 +196,14 @@ class AgentController extends ChangeNotifier {
     while (step < _maxStepsPerCommand && _isActive) {
       step++;
 
-      // 1. Capture screenshot
+      // 1. Capture screenshot (with retries for reliability after app switches)
       _setState(AgentState.capturing);
       _statusMessage = '📸 Capturing screen... (step $step)';
       notifyListeners();
 
-      String? screenshotPath;
-      try {
-        screenshotPath = await _screenCapture.captureScreen();
-        if (screenshotPath != null) {
-          _lastScreenshotPath = screenshotPath;
-        }
-      } catch (e) {
-        print('Screenshot capture failed: $e');
+      String? screenshotPath = await _captureScreenWithRetry();
+      if (screenshotPath != null) {
+        _lastScreenshotPath = screenshotPath;
       }
 
       // 2. Send to AI
@@ -272,11 +267,35 @@ class AgentController extends ChangeNotifier {
 
       // Not done → continue the loop with a follow-up message
       currentMessage = 'I have executed the actions. Here is the updated screen. Continue with the task.';
+      // If screenshot capture might fail next iteration, the AI will still
+      // receive the message but without an image. The retry logic in
+      // _captureScreenWithRetry handles this by making multiple attempts.
     }
 
     if (step >= _maxStepsPerCommand) {
       _addConversation('⚠️ Reached maximum steps ($_maxStepsPerCommand). Stopping.', false);
     }
+  }
+
+  /// Capture the screen with retry logic.
+  /// After navigating to another app, the first capture attempt may return null
+  /// because the VirtualDisplay hasn't rendered a fresh frame yet. Retrying
+  /// with increasing delays ensures we eventually get a valid screenshot.
+  Future<String?> _captureScreenWithRetry({int maxRetries = 3}) async {
+    for (int i = 0; i < maxRetries; i++) {
+      try {
+        final path = await _screenCapture.captureScreen();
+        if (path != null) return path;
+      } catch (e) {
+        print('Screenshot capture attempt ${i + 1} failed: $e');
+      }
+      if (i < maxRetries - 1) {
+        // Increasing delay between retries: 500ms, 1000ms
+        await Future.delayed(Duration(milliseconds: 500 * (i + 1)));
+      }
+    }
+    print('All $maxRetries screenshot capture attempts failed');
+    return null;
   }
 
   /// Execute a single agent action.
@@ -290,8 +309,8 @@ class AgentController extends ChangeNotifier {
             if (!success) {
               print('Failed to open app: $package');
             }
-            // Wait for the app to launch
-            await Future.delayed(const Duration(milliseconds: 1500));
+            // Wait for the app to fully launch and render its first frame
+            await Future.delayed(const Duration(milliseconds: 2500));
           }
           break;
 

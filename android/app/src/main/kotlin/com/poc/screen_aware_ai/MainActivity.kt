@@ -4,7 +4,8 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
-import android.os.Bundle
+import android.os.Build
+import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -12,9 +13,14 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.poc.screen_aware_ai/screen"
     private val SCREEN_CAPTURE_REQUEST_CODE = 1001
+    private val TAG = "MainActivity"
 
     private var pendingResult: MethodChannel.Result? = null
     private var mediaProjectionManager: MediaProjectionManager? = null
+
+    // Store projection data so we can reinitialize the service if needed
+    private var projectionResultCode: Int = -1
+    private var projectionData: Intent? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -30,12 +36,36 @@ class MainActivity : FlutterActivity() {
                 }
                 "captureScreen" -> {
                     val service = ScreenCaptureService.instance
-                    if (service != null) {
+                    if (service == null) {
+                        // Service not running at all — try to restart if we have stored data
+                        if (projectionResultCode != -1 && projectionData != null) {
+                            Log.w(TAG, "captureScreen: service is null, restarting with stored projection data")
+                            startCaptureService(projectionResultCode, projectionData!!)
+                            // Return error so Flutter side can retry after service starts
+                            result.error("NOT_INITIALIZED", "Service restarting, retry capture", null)
+                        } else {
+                            result.error("NO_SERVICE", "Screen capture service not running, need permission", null)
+                        }
+                    } else if (!service.isInitialized) {
+                        // Service exists but imageReader is null — try to reinitialize
+                        if (projectionResultCode != -1 && projectionData != null) {
+                            Log.w(TAG, "captureScreen: service not initialized, reinitializing with stored data")
+                            service.initializeProjection(projectionResultCode, projectionData!!)
+                            // If initialization succeeded, capture immediately
+                            if (service.isInitialized) {
+                                service.captureScreen(this) { path ->
+                                    result.success(path)
+                                }
+                            } else {
+                                result.error("NOT_INITIALIZED", "Failed to reinitialize, need new permission", null)
+                            }
+                        } else {
+                            result.error("NOT_INITIALIZED", "Service not initialized, need permission", null)
+                        }
+                    } else {
                         service.captureScreen(this) { path ->
                             result.success(path)
                         }
-                    } else {
-                        result.error("NO_SERVICE", "Screen capture service not running", null)
                     }
                 }
                 "isAccessibilityEnabled" -> {
@@ -135,23 +165,44 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    private fun startCaptureService(resultCode: Int, data: Intent) {
+        val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
+            putExtra("resultCode", resultCode)
+            putExtra("data", data)
+        }
+        startForegroundService(serviceIntent)
+    }
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == SCREEN_CAPTURE_REQUEST_CODE) {
             if (resultCode == Activity.RESULT_OK && data != null) {
-                // Start the foreground service with the projection data
-                val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
-                    putExtra("resultCode", resultCode)
-                    putExtra("data", data)
-                }
-                startForegroundService(serviceIntent)
+                // Store projection data for potential reinitialization later
+                projectionResultCode = resultCode
+                projectionData = data.clone() as Intent
 
-                // Give the service a moment to start
+                Log.d(TAG, "onActivityResult: permission granted, starting capture service")
+
+                startCaptureService(resultCode, data)
+
+                // Wait for the service to fully initialize before returning success
                 android.os.Handler(mainLooper).postDelayed({
-                    pendingResult?.success(true)
+                    val service = ScreenCaptureService.instance
+                    if (service != null && service.isInitialized) {
+                        Log.d(TAG, "onActivityResult: service initialized successfully")
+                        pendingResult?.success(true)
+                    } else {
+                        Log.w(TAG, "onActivityResult: service not initialized after 1s, trying direct init")
+                        // Try direct initialization as fallback
+                        if (service != null && projectionData != null) {
+                            service.initializeProjection(projectionResultCode, projectionData!!)
+                        }
+                        pendingResult?.success(service?.isInitialized == true)
+                    }
                     pendingResult = null
-                }, 500)
+                }, 1000)
             } else {
+                Log.w(TAG, "onActivityResult: permission denied or no data")
                 pendingResult?.success(false)
                 pendingResult = null
             }

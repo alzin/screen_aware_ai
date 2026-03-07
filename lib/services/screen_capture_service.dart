@@ -18,7 +18,9 @@ class ScreenCaptureManager {
     }
   }
 
-  /// Capture the current screen and return the file path
+  /// Capture the current screen and return the file path.
+  /// Automatically handles reinitialization if the capture service
+  /// lost its projection (e.g., after app switch or service restart).
   Future<String?> captureScreen() async {
     if (!_hasPermission) {
       final granted = await requestPermission();
@@ -28,6 +30,51 @@ class ScreenCaptureManager {
     try {
       final path = await _channel.invokeMethod<String>('captureScreen');
       return path;
+    } on PlatformException catch (e) {
+      if (e.code == 'NOT_INITIALIZED') {
+        // Service exists but lost its MediaProjection — wait for
+        // reinitialization (MainActivity attempts it automatically)
+        // then retry once.
+        print('Screen capture not initialized, waiting and retrying...');
+        await Future.delayed(const Duration(milliseconds: 1500));
+        try {
+          final path = await _channel.invokeMethod<String>('captureScreen');
+          return path;
+        } on PlatformException catch (retryError) {
+          if (retryError.code == 'NOT_INITIALIZED' || retryError.code == 'NO_SERVICE') {
+            // Reinitialization failed — need fresh permission grant
+            print('Reinitialization failed, re-requesting permission...');
+            _hasPermission = false;
+            final granted = await requestPermission();
+            if (!granted) return null;
+            // Final attempt after fresh permission
+            try {
+              final path = await _channel.invokeMethod<String>('captureScreen');
+              return path;
+            } catch (finalError) {
+              print('Final capture attempt failed: $finalError');
+              return null;
+            }
+          }
+          print('Retry capture failed: $retryError');
+          return null;
+        }
+      } else if (e.code == 'NO_SERVICE') {
+        // Service not running at all — request permission to start it
+        print('Screen capture service not running, requesting permission...');
+        _hasPermission = false;
+        final granted = await requestPermission();
+        if (!granted) return null;
+        try {
+          final path = await _channel.invokeMethod<String>('captureScreen');
+          return path;
+        } catch (retryError) {
+          print('Capture after permission re-request failed: $retryError');
+          return null;
+        }
+      }
+      print('Error capturing screen: $e');
+      return null;
     } catch (e) {
       print('Error capturing screen: $e');
       return null;
