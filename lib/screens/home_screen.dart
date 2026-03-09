@@ -12,15 +12,20 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, WidgetsBindingObserver {
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _apiKeyController = TextEditingController();
 
+  bool _isAccessibilityEnabled = false;
+  bool _isCheckingAccessibility = true;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
@@ -31,6 +36,30 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     widget.controller.addListener(_onControllerUpdate);
     _loadApiKey();
+    
+    _checkAccessibility();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkAccessibility();
+    }
+  }
+
+  Future<void> _checkAccessibility() async {
+    if (mounted && !_isCheckingAccessibility) {
+      setState(() => _isCheckingAccessibility = true);
+    }
+    
+    final isEnabled = await widget.controller.screenCapture.isAccessibilityEnabled();
+    
+    if (mounted) {
+      setState(() {
+        _isAccessibilityEnabled = isEnabled;
+        _isCheckingAccessibility = false;
+      });
+    }
   }
 
   Future<void> _loadApiKey() async {
@@ -72,6 +101,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pulseController.dispose();
     _scrollController.dispose();
     _apiKeyController.dispose();
@@ -82,6 +112,69 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+
+    if (_isCheckingAccessibility) {
+      return Scaffold(
+        backgroundColor: colorScheme.surface,
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (!_isAccessibilityEnabled) {
+      return Scaffold(
+        backgroundColor: colorScheme.surface,
+        appBar: AppBar(
+          title: const Text('Access Required'),
+          backgroundColor: colorScheme.surface,
+          elevation: 0,
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.accessibility_new,
+                  size: 72,
+                  color: colorScheme.primary,
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  'Accessibility Required',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: colorScheme.onSurface,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'To use this app, you must enable the Lucy accessibility service.\n\n'
+                  'Go to Settings → Accessibility → Lucy → Enable',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: colorScheme.onSurface.withOpacity(0.7),
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 32),
+                FilledButton.icon(
+                  onPressed: () => widget.controller.screenCapture.openAccessibilitySettings(),
+                  icon: const Icon(Icons.settings),
+                  label: const Text('Open Settings'),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: colorScheme.surface,

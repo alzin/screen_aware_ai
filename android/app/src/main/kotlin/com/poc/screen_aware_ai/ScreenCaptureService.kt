@@ -277,7 +277,7 @@ class ScreenCaptureService : Service() {
 
     private fun createNotification(): Notification {
         return Notification.Builder(this, CHANNEL_ID)
-            .setContentTitle("Screen Aware AI")
+            .setContentTitle("Lucy")
             .setContentText("Capturing screen for analysis...")
             .setSmallIcon(android.R.drawable.ic_menu_camera)
             .build()

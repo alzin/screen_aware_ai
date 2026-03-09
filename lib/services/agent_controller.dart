@@ -148,7 +148,7 @@ class AgentController extends ChangeNotifier {
     if (!hasAccessibility) {
       _addConversation(
         '⚠️ Accessibility service not enabled. I can see the screen but cannot perform actions (tap, type, swipe). '
-        'Go to Settings → Accessibility → Screen Aware AI to enable it.',
+        'Go to Settings → Accessibility → Lucy to enable it.',
         false,
       );
     }
@@ -353,7 +353,7 @@ class AgentController extends ChangeNotifier {
       if (!hasAccessibility) {
         _addConversation(
           '⚠️ Cannot execute "${action.type}" — accessibility service not enabled. '
-          'Please enable it in Settings → Accessibility → Screen Aware AI.',
+          'Please enable it in Settings → Accessibility → Lucy.',
           false,
         );
         return;
