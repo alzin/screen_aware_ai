@@ -208,11 +208,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.accessibility_new),
-            tooltip: 'Accessibility Settings',
-            onPressed: () => _showAccessibilityDialog(context),
-          ),
-          IconButton(
             icon: const Icon(Icons.key),
             tooltip: 'API Key',
             onPressed: () => _showApiKeyDialog(context),
@@ -637,32 +632,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
               Navigator.pop(ctx);
             },
             child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showAccessibilityDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Accessibility Service'),
-        content: const Text(
-          'you need to enable the Lucy accessibility service.\n\n'
-          'Go to Settings → Accessibility → Lucy → Enable',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              widget.controller.screenCapture.openAccessibilitySettings();
-            },
-            child: const Text('Open Settings'),
           ),
         ],
       ),
