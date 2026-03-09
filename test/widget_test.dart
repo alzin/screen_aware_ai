@@ -3,7 +3,7 @@ import 'package:screen_aware_ai/main.dart';
 
 void main() {
   testWidgets('App renders', (WidgetTester tester) async {
-    await tester.pumpWidget(const ScreenAwareApp());
-    expect(find.text('Screen Aware AI'), findsOneWidget);
+    await tester.pumpWidget(const LucyApp());
+    expect(find.text('Lucy'), findsOneWidget);
   });
 }

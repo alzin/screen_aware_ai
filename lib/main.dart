@@ -4,17 +4,17 @@ import 'services/agent_controller.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const ScreenAwareApp());
+  runApp(const LucyApp());
 }
 
-class ScreenAwareApp extends StatefulWidget {
-  const ScreenAwareApp({super.key});
+class LucyApp extends StatefulWidget {
+  const LucyApp({super.key});
 
   @override
-  State<ScreenAwareApp> createState() => _ScreenAwareAppState();
+  State<LucyApp> createState() => _LucyAppState();
 }
 
-class _ScreenAwareAppState extends State<ScreenAwareApp> {
+class _LucyAppState extends State<LucyApp> {
   late final AgentController _agentController;
 
   @override
@@ -33,7 +33,7 @@ class _ScreenAwareAppState extends State<ScreenAwareApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Screen Aware AI',
+      title: 'Lucy',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,

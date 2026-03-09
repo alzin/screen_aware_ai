@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="accessibility_service_description">Screen Aware AI uses this service to perform actions on your screen, such as tapping buttons and typing text, based on your voice commands.</string>
+    <string name="accessibility_service_description">Lucy uses this service to perform actions on your screen, such as tapping buttons and typing text, based on your voice commands.</string>
 </resources>

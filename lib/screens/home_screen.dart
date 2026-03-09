@@ -108,7 +108,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
             ),
             const SizedBox(width: 12),
-            const Text('Screen Aware AI'),
+            const Text('Lucy'),
           ],
         ),
         backgroundColor: colorScheme.surface,
@@ -207,7 +207,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
             const SizedBox(height: 24),
             Text(
-              'Screen Aware AI',
+              'Lucy',
               style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
@@ -286,7 +286,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  isUser ? 'You' : 'AI',
+                  isUser ? 'You' : 'Lucy',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
@@ -556,9 +556,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       builder: (ctx) => AlertDialog(
         title: const Text('Accessibility Service'),
         content: const Text(
-          'To allow the AI to perform actions on screen (tapping, typing), '
-          'you need to enable the Screen Aware AI accessibility service.\n\n'
-          'Go to Settings → Accessibility → Screen Aware AI → Enable',
+          'you need to enable the Lucy accessibility service.\n\n'
+          'Go to Settings → Accessibility → Lucy → Enable',
         ),
         actions: [
           TextButton(

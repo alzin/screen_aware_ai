@@ -1,6 +1,6 @@
-# screen_aware_ai
+# Lucy
 
-A new Flutter project.
+Lucy is your screen-aware AI companion. She can see your screen, understand context, and help you perform actions through voice commands.
 
 ## Getting Started
 
