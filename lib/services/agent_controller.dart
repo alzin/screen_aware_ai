@@ -40,7 +40,7 @@ class AgentController extends ChangeNotifier {
   final List<ConversationEntry> _conversation = [];
   List<ConversationEntry> get conversation => List.unmodifiable(_conversation);
 
-  String _statusMessage = 'Tap the mic to start';
+  String _statusMessage = 'I can see your screen and help you interact with apps';
   String get statusMessage => _statusMessage;
 
   String? _lastScreenshotPath;
@@ -162,7 +162,7 @@ class AgentController extends ChangeNotifier {
     await _voiceService.stopListening();
     await _voiceService.stopSpeaking();
     _setState(AgentState.idle);
-    _statusMessage = 'Tap the mic to start';
+    _statusMessage = 'I can see your screen and help you interact with apps';
     _addConversation('Agent stopped.', false);
     notifyListeners();
   }

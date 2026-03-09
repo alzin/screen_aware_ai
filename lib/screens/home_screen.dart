@@ -293,29 +293,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
               size: 72,
               color: colorScheme.primary.withOpacity(0.4),
             ),
-            const SizedBox(height: 24),
-            Text(
-              'Lucy',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: colorScheme.onSurface,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'I can see your screen and help you interact with apps.\n\n'
-              '1. Set your Gemini API key 🔑\n'
-              '2. Tap the mic to start 🎤\n'
-              '3. Ask me about what\'s on screen 👀\n'
-              '4. Enable Accessibility for actions ⚡',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                color: colorScheme.onSurface.withOpacity(0.6),
-                height: 1.6,
-              ),
-            ),
           ],
         ),
       ),
@@ -476,15 +453,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Screenshot button
-            if (widget.controller.isActive)
-              IconButton(
-                onPressed: _manualCapture,
-                icon: const Icon(Icons.camera_alt_outlined),
-                tooltip: 'Capture screen now',
+            // Left area: Screenshot button
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: widget.controller.isActive
+                    ? IconButton(
+                        onPressed: _manualCapture,
+                        icon: const Icon(Icons.camera_alt_outlined),
+                        tooltip: 'Capture screen now',
+                      )
+                    : const SizedBox.shrink(),
               ),
-
-            const SizedBox(width: 16),
+            ),
 
             // Main mic button
             ScaleTransition(
@@ -525,31 +506,33 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
               ),
             ),
 
-            const SizedBox(width: 16),
-
-            // Last screenshot preview
-            if (widget.controller.lastScreenshotPath != null)
-              GestureDetector(
-                onTap: () => _showScreenshotPreview(context),
-                child: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: colorScheme.outline.withOpacity(0.3)),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(7),
-                    child: Image.file(
-                      File(widget.controller.lastScreenshotPath!),
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Icon(Icons.image, size: 20),
-                    ),
-                  ),
-                ),
-              )
-            else
-              const SizedBox(width: 40),
+            // Right area: Last screenshot preview
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: widget.controller.lastScreenshotPath != null
+                    ? GestureDetector(
+                        onTap: () => _showScreenshotPreview(context),
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: colorScheme.outline.withOpacity(0.3)),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(7),
+                            child: Image.file(
+                              File(widget.controller.lastScreenshotPath!),
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => const Icon(Icons.image, size: 20),
+                            ),
+                          ),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+            ),
           ],
         ),
       ),
