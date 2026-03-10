@@ -36,7 +36,7 @@ class ScreenCaptureManager {
         // reinitialization (MainActivity attempts it automatically)
         // then retry once.
         print('Screen capture not initialized, waiting and retrying...');
-        await Future.delayed(const Duration(milliseconds: 1500));
+        await Future.delayed(const Duration(milliseconds: 800));
         try {
           final path = await _channel.invokeMethod<String>('captureScreen');
           return path;

@@ -267,7 +267,7 @@ class AgentController extends ChangeNotifier {
         }
 
         // Brief wait after actions for the UI to settle
-        await Future.delayed(const Duration(milliseconds: 800));
+        await Future.delayed(const Duration(milliseconds: 300));
       }
 
       // 4. Speak the response (only speak if done or has something to say)
@@ -280,9 +280,9 @@ class AgentController extends ChangeNotifier {
         await _voiceService.speak(ttsText);
 
         // Wait for TTS to finish
-        await Future.delayed(const Duration(seconds: 1));
+        await Future.delayed(const Duration(milliseconds: 500));
         while (_voiceService.isSpeaking) {
-          await Future.delayed(const Duration(milliseconds: 500));
+          await Future.delayed(const Duration(milliseconds: 200));
         }
       }
 
@@ -316,8 +316,8 @@ class AgentController extends ChangeNotifier {
         print('Screenshot capture attempt ${i + 1} failed: $e');
       }
       if (i < maxRetries - 1) {
-        // Increasing delay between retries: 500ms, 1000ms
-        await Future.delayed(Duration(milliseconds: 500 * (i + 1)));
+        // Increasing delay between retries: 200ms, 400ms
+        await Future.delayed(Duration(milliseconds: 200 * (i + 1)));
       }
     }
     print('All $maxRetries screenshot capture attempts failed');
@@ -370,7 +370,7 @@ class AgentController extends ChangeNotifier {
               print('Failed to open app: $package');
             }
             // Wait for the app to fully launch and render its first frame
-            await Future.delayed(const Duration(milliseconds: 2500));
+            await Future.delayed(const Duration(milliseconds: 1200));
           }
           break;
 
@@ -396,14 +396,14 @@ class AgentController extends ChangeNotifier {
             y = (action.params['y'] as num?)?.toDouble() ?? 0;
           }
           await _screenCapture.performTap(x, y);
-          await Future.delayed(const Duration(milliseconds: 500));
+          await Future.delayed(const Duration(milliseconds: 200));
           break;
 
         case 'type':
           final text = action.params['text'] as String? ?? '';
           if (text.isNotEmpty) {
             await _screenCapture.performType(text);
-            await Future.delayed(const Duration(milliseconds: 300));
+            await Future.delayed(const Duration(milliseconds: 100));
           }
           break;
 
@@ -413,17 +413,17 @@ class AgentController extends ChangeNotifier {
           final endX = (action.params['endX'] as num?)?.toDouble() ?? 0;
           final endY = (action.params['endY'] as num?)?.toDouble() ?? 0;
           await _screenCapture.performSwipe(startX, startY, endX, endY);
-          await Future.delayed(const Duration(milliseconds: 500));
+          await Future.delayed(const Duration(milliseconds: 250));
           break;
 
         case 'back':
           await _screenCapture.pressBack();
-          await Future.delayed(const Duration(milliseconds: 500));
+          await Future.delayed(const Duration(milliseconds: 200));
           break;
 
         case 'home':
           await _screenCapture.pressHome();
-          await Future.delayed(const Duration(milliseconds: 500));
+          await Future.delayed(const Duration(milliseconds: 200));
           break;
 
         case 'wait':
