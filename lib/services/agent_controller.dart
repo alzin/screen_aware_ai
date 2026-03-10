@@ -57,6 +57,8 @@ class AgentController extends ChangeNotifier {
 
   static const int _maxStepsPerCommand = 10;
 
+  bool _isAskingForFurtherHelp = false;
+
   AiService get aiService => _aiService;
   ScreenCaptureManager get screenCapture => _screenCapture;
 
@@ -132,6 +134,7 @@ class AgentController extends ChangeNotifier {
     _isActive = true;
     _addConversation('Agent started. Listening for your commands...', false);
     _statusMessage = 'Listening...';
+    _isAskingForFurtherHelp = false;
     notifyListeners();
 
     // Request screen capture permission
@@ -187,6 +190,32 @@ class AgentController extends ChangeNotifier {
 
     _addConversation(text, true);
     _currentTranscript = '';
+
+    if (_isAskingForFurtherHelp) {
+      _isAskingForFurtherHelp = false;
+      final textLower = text.trim().toLowerCase().replaceAll(RegExp(r'[^\w\s]'), '');
+      if (textLower.startsWith('no ') ||
+          textLower == 'no' ||
+          textLower == 'nope' ||
+          textLower == 'nah' ||
+          textLower == 'stop' ||
+          textLower == 'exit' ||
+          textLower == 'nothing' ||
+          textLower.startsWith('not ')) {
+        
+        _setState(AgentState.speaking);
+        _addConversation('Alright, stopping the agent.', false);
+        await _voiceService.speak('Alright, stopping the agent.');
+
+        await Future.delayed(const Duration(milliseconds: 500));
+        while (_voiceService.isSpeaking) {
+          await Future.delayed(const Duration(milliseconds: 200));
+        }
+
+        await stopAgent();
+        return;
+      }
+    }
 
     await _runAgentLoop(text);
 
@@ -244,7 +273,18 @@ class AgentController extends ChangeNotifier {
       );
 
       // Show AI thought + speak in conversation
-      String displayText = agentResponse.speak;
+      String speakText = agentResponse.speak;
+      if (agentResponse.done) {
+        if (speakText.isNotEmpty && !speakText.endsWith(' ') && !speakText.endsWith('\n')) {
+          speakText += ' ';
+        }
+        speakText += 'Do you need any further help?';
+        _isAskingForFurtherHelp = true;
+      } else {
+        _isAskingForFurtherHelp = false;
+      }
+
+      String displayText = speakText;
       if (agentResponse.thought.isNotEmpty) {
         displayText = '💭 ${agentResponse.thought}\n\n$displayText';
       }
@@ -271,12 +311,12 @@ class AgentController extends ChangeNotifier {
       }
 
       // 4. Speak the response (only speak if done or has something to say)
-      if (agentResponse.speak.isNotEmpty) {
+      if (speakText.isNotEmpty) {
         _setState(AgentState.speaking);
         _statusMessage = '🔊 Speaking...';
         notifyListeners();
 
-        final ttsText = _trimForTts(agentResponse.speak);
+        final ttsText = _trimForTts(speakText);
         await _voiceService.speak(ttsText);
 
         // Wait for TTS to finish
@@ -467,6 +507,7 @@ class AgentController extends ChangeNotifier {
   void clearConversation() {
     _conversation.clear();
     _lastScreenshotPath = null;
+    _isAskingForFurtherHelp = false;
     _aiService.resetChat();
     _screenCapture.clearScreenshots();
     notifyListeners();
