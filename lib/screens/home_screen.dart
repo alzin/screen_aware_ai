@@ -208,6 +208,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
         elevation: 0,
         actions: [
           IconButton(
+            icon: Icon(
+              widget.controller.wakeWordService.isListening
+                  ? Icons.hearing
+                  : Icons.hearing_disabled,
+            ),
+            tooltip: 'Wake Word',
+            onPressed: () => _showWakeWordDialog(context),
+          ),
+          IconButton(
             icon: const Icon(Icons.key),
             tooltip: 'API Key',
             onPressed: () => _showApiKeyDialog(context),
@@ -262,7 +271,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              widget.controller.statusMessage,
+              _getStatusText(),
               style: TextStyle(
                 color: statusColor,
                 fontSize: 13,
@@ -575,6 +584,84 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       case AgentState.executingAction:
         return Colors.cyan;
     }
+  }
+
+  String _getStatusText() {
+    if (widget.controller.state == AgentState.idle &&
+        widget.controller.wakeWordService.isListening) {
+      return 'Listening for "Hey Lucy"...';
+    }
+    return widget.controller.statusMessage;
+  }
+
+  void _showWakeWordDialog(BuildContext context) {
+    final wakeWordService = widget.controller.wakeWordService;
+    final picoKeyController = TextEditingController();
+
+    SharedPreferences.getInstance().then((prefs) {
+      picoKeyController.text = prefs.getString('picovoice_access_key') ?? '';
+    });
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Hey Lucy Wake Word'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SwitchListTile(
+                title: const Text('Enable wake word'),
+                subtitle: const Text('Say "Hey Lucy" to activate'),
+                value: wakeWordService.isEnabled,
+                onChanged: wakeWordService.isAccessKeySet
+                    ? (val) async {
+                        await wakeWordService.setEnabled(val);
+                        setDialogState(() {});
+                        setState(() {});
+                      }
+                    : null,
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: picoKeyController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  hintText: 'Picovoice Access Key',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.vpn_key),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Get a free key at console.picovoice.ai',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                final key = picoKeyController.text.trim();
+                if (key.isNotEmpty) {
+                  await wakeWordService.setAccessKey(key);
+                }
+                if (mounted) Navigator.pop(ctx);
+                setState(() {});
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showApiKeyDialog(BuildContext context) {

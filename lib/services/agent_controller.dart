@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'ai_service.dart';
 import 'voice_service.dart';
 import 'screen_capture_service.dart';
+import 'wake_word_service.dart';
 
 enum AgentState {
   idle,
@@ -33,6 +34,7 @@ class AgentController extends ChangeNotifier {
   final AiService _aiService = AiService();
   final VoiceService _voiceService = VoiceService();
   final ScreenCaptureManager _screenCapture = ScreenCaptureManager();
+  final WakeWordService _wakeWordService = WakeWordService();
 
   AgentState _state = AgentState.idle;
   AgentState get state => _state;
@@ -61,6 +63,7 @@ class AgentController extends ChangeNotifier {
 
   AiService get aiService => _aiService;
   ScreenCaptureManager get screenCapture => _screenCapture;
+  WakeWordService get wakeWordService => _wakeWordService;
 
   Future<void> initialize() async {
     await _voiceService.initialize();
@@ -84,6 +87,10 @@ class AgentController extends ChangeNotifier {
             _setState(AgentState.idle);
             _isActive = false;
             notifyListeners();
+            // Resume wake word listening
+            if (_wakeWordService.isEnabled && _wakeWordService.isAccessKeySet) {
+              _wakeWordService.startListening().then((_) => notifyListeners());
+            }
             return;
           }
           Future.delayed(const Duration(seconds: 2), () {
@@ -109,6 +116,14 @@ class AgentController extends ChangeNotifier {
         });
       }
     };
+
+    // Initialize wake word detection
+    await _wakeWordService.initialize();
+    _wakeWordService.onWakeWordDetected = _onWakeWordDetected;
+    if (_wakeWordService.isEnabled && _wakeWordService.isAccessKeySet) {
+      await _wakeWordService.startListening();
+      notifyListeners();
+    }
   }
 
   void configureAi(String apiKey) {
@@ -124,11 +139,22 @@ class AgentController extends ChangeNotifier {
     }
   }
 
+  /// Called when "Hey Lucy" wake word is detected.
+  void _onWakeWordDetected() {
+    if (_isActive) return; // Agent already running
+    startAgent();
+  }
+
   Future<void> startAgent() async {
     if (!_aiService.isConfigured) {
       _statusMessage = '⚠️ Please set your Gemini API key first';
       notifyListeners();
       return;
+    }
+
+    // Stop wake word listening to release microphone for STT
+    if (_wakeWordService.isListening) {
+      await _wakeWordService.stopListening();
     }
 
     _isActive = true;
@@ -168,6 +194,12 @@ class AgentController extends ChangeNotifier {
     _statusMessage = 'I can see your screen and help you interact with apps';
     _addConversation('Agent stopped.', false);
     notifyListeners();
+
+    // Resume wake word listening if enabled
+    if (_wakeWordService.isEnabled && _wakeWordService.isAccessKeySet) {
+      await _wakeWordService.startListening();
+      notifyListeners();
+    }
   }
 
   Future<void> _startListening() async {
@@ -516,6 +548,7 @@ class AgentController extends ChangeNotifier {
   @override
   void dispose() {
     _voiceService.dispose();
+    _wakeWordService.dispose();
     super.dispose();
   }
 }
