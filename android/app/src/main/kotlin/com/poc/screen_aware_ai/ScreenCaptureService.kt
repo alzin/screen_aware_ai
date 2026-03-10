@@ -292,6 +292,18 @@ class ScreenCaptureService : Service() {
         }
     }
 
+    fun clearScreenshots(context: Context) {
+        try {
+            val screenshotsDir = File(context.filesDir, "screenshots")
+            if (screenshotsDir.exists()) {
+                val deleted = screenshotsDir.listFiles()?.map { it.delete() }?.all { it } ?: true
+                Log.d(TAG, "clearScreenshots: deleted all screenshots: $deleted")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "clearScreenshots: failed", e)
+        }
+    }
+
     private fun createNotificationChannel() {
         val channel = NotificationChannel(
             CHANNEL_ID,

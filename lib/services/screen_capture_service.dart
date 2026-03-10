@@ -206,4 +206,13 @@ class ScreenCaptureManager {
       return false;
     }
   }
+
+  /// Delete all saved screenshots
+  Future<void> clearScreenshots() async {
+    try {
+      await _channel.invokeMethod('clearScreenshots');
+    } catch (e) {
+      print('Error clearing screenshots: $e');
+    }
+  }
 }

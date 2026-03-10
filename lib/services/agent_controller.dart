@@ -466,7 +466,9 @@ class AgentController extends ChangeNotifier {
 
   void clearConversation() {
     _conversation.clear();
+    _lastScreenshotPath = null;
     _aiService.resetChat();
+    _screenCapture.clearScreenshots();
     notifyListeners();
   }
 

@@ -186,6 +186,23 @@ class MainActivity : FlutterActivity() {
                     startActivity(intent)
                     result.success(true)
                 }
+                "clearScreenshots" -> {
+                    val service = ScreenCaptureService.instance
+                    if (service != null) {
+                        service.clearScreenshots(this)
+                    } else {
+                        // Even if service is null, we can delete the files manually
+                        try {
+                            val screenshotsDir = java.io.File(filesDir, "screenshots")
+                            if (screenshotsDir.exists()) {
+                                screenshotsDir.listFiles()?.forEach { it.delete() }
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "clearScreenshots: manual delete failed", e)
+                        }
+                    }
+                    result.success(true)
+                }
                 else -> result.notImplemented()
             }
         }
