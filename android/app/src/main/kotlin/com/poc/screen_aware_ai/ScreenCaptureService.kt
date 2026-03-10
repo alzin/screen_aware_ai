@@ -248,7 +248,16 @@ class ScreenCaptureService : Service() {
             val croppedBitmap = Bitmap.createBitmap(bitmap, 0, 0, screenWidth, screenHeight)
             if (croppedBitmap != bitmap) bitmap.recycle()
 
-            val file = File(context.cacheDir, "screenshot_${System.currentTimeMillis()}.png")
+            // Use persistent filesDir instead of cacheDir to prevent system purging
+            val screenshotsDir = File(context.filesDir, "screenshots")
+            if (!screenshotsDir.exists()) {
+                screenshotsDir.mkdirs()
+            }
+
+            // Cleanup old screenshots before saving new one
+            cleanupOldScreenshots(screenshotsDir, maxCount = 50)
+
+            val file = File(screenshotsDir, "screenshot_${System.currentTimeMillis()}.png")
             FileOutputStream(file).use { out ->
                 croppedBitmap.compress(Bitmap.CompressFormat.PNG, 85, out)
             }
@@ -260,6 +269,26 @@ class ScreenCaptureService : Service() {
             Log.e(TAG, "saveImageToFile: error", e)
             image.close()
             return null
+        }
+    }
+
+    private fun cleanupOldScreenshots(dir: File, maxCount: Int) {
+        try {
+            val files = dir.listFiles { file -> file.isFile && file.name.startsWith("screenshot_") }
+            if (files != null && files.size >= maxCount) {
+                // Sort by last modified ascending (oldest first)
+                files.sortBy { it.lastModified() }
+                
+                // Delete oldest files until we are below the limit
+                val numToDelete = files.size - maxCount + 1
+                for (i in 0 until numToDelete) {
+                    if (files[i].delete()) {
+                        Log.d(TAG, "cleanupOldScreenshots: deleted old screenshot ${files[i].name}")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "cleanupOldScreenshots: failed", e)
         }
     }
 
