@@ -1,10 +1,14 @@
 package com.poc.screen_aware_ai
 
 import android.app.Activity
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.media.projection.MediaProjectionManager
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -17,18 +21,39 @@ class MainActivity : FlutterActivity() {
 
     private var pendingResult: MethodChannel.Result? = null
     private var mediaProjectionManager: MediaProjectionManager? = null
+    private var methodChannel: MethodChannel? = null
 
     // Store projection data so we can reinitialize the service if needed.
     // IMPORTANT: Use 0 as sentinel — Activity.RESULT_OK is -1, so -1 can't be the default.
     private var projectionResultCode: Int = 0
     private var projectionData: Intent? = null
 
+    // Broadcast receiver for overlay stop button
+    private val forceStopReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == OverlayService.ACTION_FORCE_STOP) {
+                Log.d(TAG, "Received FORCE_STOP broadcast, forwarding to Flutter")
+                methodChannel?.invokeMethod("onForceStop", null)
+            }
+        }
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
         mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
+        // Register broadcast receiver for overlay stop button
+        val filter = IntentFilter(OverlayService.ACTION_FORCE_STOP)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(forceStopReceiver, filter, RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(forceStopReceiver, filter)
+        }
+
+        val channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
+        methodChannel = channel
+        channel.setMethodCallHandler { call, result ->
             when (call.method) {
                 "requestScreenCapture" -> {
                     pendingResult = result
@@ -186,6 +211,35 @@ class MainActivity : FlutterActivity() {
                     startActivity(intent)
                     result.success(true)
                 }
+                "hasOverlayPermission" -> {
+                    result.success(Settings.canDrawOverlays(this))
+                }
+                "requestOverlayPermission" -> {
+                    val intent = Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:$packageName")
+                    )
+                    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    startActivity(intent)
+                    result.success(true)
+                }
+                "showStopOverlay" -> {
+                    if (Settings.canDrawOverlays(this)) {
+                        val intent = Intent(this, OverlayService::class.java)
+                        startService(intent)
+                        result.success(true)
+                    } else {
+                        result.success(false)
+                    }
+                }
+                "hideStopOverlay" -> {
+                    val service = OverlayService.instance
+                    if (service != null) {
+                        service.hideOverlay()
+                        stopService(Intent(this, OverlayService::class.java))
+                    }
+                    result.success(true)
+                }
                 "clearScreenshots" -> {
                     val service = ScreenCaptureService.instance
                     if (service != null) {
@@ -249,5 +303,15 @@ class MainActivity : FlutterActivity() {
                 pendingResult = null
             }
         }
+    }
+
+    override fun onDestroy() {
+        try {
+            unregisterReceiver(forceStopReceiver)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to unregister forceStopReceiver", e)
+        }
+        methodChannel = null
+        super.onDestroy()
     }
 }

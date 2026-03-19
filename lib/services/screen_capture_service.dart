@@ -6,6 +6,22 @@ class ScreenCaptureManager {
   bool _hasPermission = false;
   bool get hasPermission => _hasPermission;
 
+  /// Callback fired when the native overlay stop button is tapped.
+  VoidCallback? onForceStop;
+
+  bool _handlerRegistered = false;
+
+  /// Ensure the reverse method call handler is registered (native → Dart).
+  void _ensureHandler() {
+    if (_handlerRegistered) return;
+    _handlerRegistered = true;
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == 'onForceStop') {
+        onForceStop?.call();
+      }
+    });
+  }
+
   /// Request screen capture permission (shows system dialog)
   Future<bool> requestPermission() async {
     try {
@@ -213,6 +229,49 @@ class ScreenCaptureManager {
       await _channel.invokeMethod('clearScreenshots');
     } catch (e) {
       print('Error clearing screenshots: $e');
+    }
+  }
+
+  // ─── Overlay stop button ────────────────────────────────────────────
+
+  /// Check if the app has overlay (draw-over-other-apps) permission.
+  Future<bool> hasOverlayPermission() async {
+    try {
+      final result = await _channel.invokeMethod<bool>('hasOverlayPermission');
+      return result ?? false;
+    } catch (e) {
+      print('Error checking overlay permission: $e');
+      return false;
+    }
+  }
+
+  /// Open the system settings page for overlay permission.
+  Future<void> requestOverlayPermission() async {
+    try {
+      await _channel.invokeMethod('requestOverlayPermission');
+    } catch (e) {
+      print('Error requesting overlay permission: $e');
+    }
+  }
+
+  /// Show the floating stop button overlay on top of all apps.
+  Future<bool> showStopOverlay() async {
+    _ensureHandler();
+    try {
+      final result = await _channel.invokeMethod<bool>('showStopOverlay');
+      return result ?? false;
+    } catch (e) {
+      print('Error showing stop overlay: $e');
+      return false;
+    }
+  }
+
+  /// Hide the floating stop button overlay.
+  Future<void> hideStopOverlay() async {
+    try {
+      await _channel.invokeMethod('hideStopOverlay');
+    } catch (e) {
+      print('Error hiding stop overlay: $e');
     }
   }
 }

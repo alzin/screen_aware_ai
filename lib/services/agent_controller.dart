@@ -57,13 +57,32 @@ class AgentController extends ChangeNotifier {
 
   static const int _maxStepsPerCommand = 10;
 
+  bool _cancelRequested = false;
+
   bool _isAskingForFurtherHelp = false;
 
   AiService get aiService => _aiService;
   ScreenCaptureManager get screenCapture => _screenCapture;
 
+  /// Whether a cancel has been requested by the user.
+  bool get cancelRequested => _cancelRequested;
+
+  /// Force-stop the current agent loop immediately.
+  void requestCancel() {
+    _cancelRequested = true;
+    _voiceService.stopSpeaking();
+    notifyListeners();
+  }
+
   Future<void> initialize() async {
     await _voiceService.initialize();
+
+    // Wire native overlay stop button → requestCancel
+    _screenCapture.onForceStop = () {
+      if (_isActive) {
+        requestCancel();
+      }
+    };
 
     _voiceService.onResult = (text, isFinal) {
       _currentTranscript = text;
@@ -156,12 +175,24 @@ class AgentController extends ChangeNotifier {
       );
     }
 
+    // Request overlay permission for the floating stop button
+    final hasOverlay = await _screenCapture.hasOverlayPermission();
+    if (!hasOverlay) {
+      _addConversation(
+        '⚠️ Overlay permission not granted. The floating stop button won\'t appear over other apps. '
+        'Granting "Display over other apps" permission now...',
+        false,
+      );
+      await _screenCapture.requestOverlayPermission();
+    }
+
     _listenRetryCount = 0;
     _startListening();
   }
 
   Future<void> stopAgent() async {
     _isActive = false;
+    _cancelRequested = false;
     await _voiceService.stopListening();
     await _voiceService.stopSpeaking();
     _setState(AgentState.idle);
@@ -227,13 +258,17 @@ class AgentController extends ChangeNotifier {
 
   /// The core agent loop: capture → analyze → act → repeat.
   Future<void> _runAgentLoop(String userMessage) async {
+    _cancelRequested = false;
     int step = 0;
     String currentMessage = userMessage;
+
+    // Show floating stop overlay on top of all apps
+    await _screenCapture.showStopOverlay();
 
     // Fetch screen size once for the whole loop
     final screenSize = await _screenCapture.getScreenSize();
 
-    while (step < _maxStepsPerCommand && _isActive) {
+    while (step < _maxStepsPerCommand && _isActive && !_cancelRequested) {
       step++;
 
       // 1. Capture screenshot (with retries for reliability after app switches)
@@ -245,6 +280,8 @@ class AgentController extends ChangeNotifier {
       if (screenshotPath != null) {
         _lastScreenshotPath = screenshotPath;
       }
+
+      if (_cancelRequested) break;
 
       // 1b. Fetch UI tree from accessibility service (runs in parallel-ready)
       String? uiTree;
@@ -260,6 +297,8 @@ class AgentController extends ChangeNotifier {
         print('UI tree fetch/parse failed: $e');
       }
 
+      if (_cancelRequested) break;
+
       // 2. Send to AI (with screenshot + UI tree)
       _setState(AgentState.analyzing);
       _statusMessage = '🤖 Thinking... (step $step)';
@@ -271,6 +310,8 @@ class AgentController extends ChangeNotifier {
         screenSize: screenSize,
         uiTree: uiTree,
       );
+
+      if (_cancelRequested) break;
 
       // Show AI thought + speak in conversation
       String speakText = agentResponse.speak;
@@ -296,6 +337,8 @@ class AgentController extends ChangeNotifier {
       }
       _addConversation(displayText, false, screenshotPath: screenshotPath);
 
+      if (_cancelRequested) break;
+
       // 3. Execute actions
       if (agentResponse.actions.isNotEmpty) {
         _setState(AgentState.executingAction);
@@ -303,12 +346,17 @@ class AgentController extends ChangeNotifier {
         notifyListeners();
 
         for (final action in agentResponse.actions) {
+          if (_cancelRequested) break;
           await _executeAction(action, uiElements);
         }
+
+        if (_cancelRequested) break;
 
         // Brief wait after actions for the UI to settle
         await Future.delayed(const Duration(milliseconds: 300));
       }
+
+      if (_cancelRequested) break;
 
       // 4. Speak the response (only speak if done or has something to say)
       if (speakText.isNotEmpty) {
@@ -321,10 +369,12 @@ class AgentController extends ChangeNotifier {
 
         // Wait for TTS to finish
         await Future.delayed(const Duration(milliseconds: 500));
-        while (_voiceService.isSpeaking) {
+        while (_voiceService.isSpeaking && !_cancelRequested) {
           await Future.delayed(const Duration(milliseconds: 200));
         }
       }
+
+      if (_cancelRequested) break;
 
       // 5. Check if done
       if (agentResponse.done) {
@@ -336,6 +386,16 @@ class AgentController extends ChangeNotifier {
       // If screenshot capture might fail next iteration, the AI will still
       // receive the message but without an image. The retry logic in
       // _captureScreenWithRetry handles this by making multiple attempts.
+    }
+
+    // Always hide the overlay when the loop ends
+    await _screenCapture.hideStopOverlay();
+
+    // Handle cancellation
+    if (_cancelRequested) {
+      _cancelRequested = false;
+      _addConversation('🛑 Stopped by user.', false);
+      return;
     }
 
     if (step >= _maxStepsPerCommand) {
