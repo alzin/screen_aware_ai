@@ -48,8 +48,7 @@ class OverlayService : Service() {
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-            y = 180  // offset from bottom
+            gravity = Gravity.CENTER
         }
 
         // Build the stop button view programmatically
@@ -68,17 +67,9 @@ class OverlayService : Service() {
             // Elevation/shadow
             elevation = 16f
 
-            // Stop icon (using unicode)
-            val icon = TextView(this@OverlayService).apply {
-                text = "⏹"
-                textSize = 18f
-                setTextColor(Color.WHITE)
-            }
-            addView(icon)
-
             // "Stop" label
             val label = TextView(this@OverlayService).apply {
-                text = "  Stop"
+                text = "Stop"
                 textSize = 16f
                 setTextColor(Color.WHITE)
                 setTypeface(typeface, android.graphics.Typeface.BOLD)
