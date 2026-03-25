@@ -325,7 +325,7 @@ class AgentController extends ChangeNotifier {
 
       if (_cancelRequested) break;
 
-      // Show AI thought + speak in conversation
+      // Show AI response and action summary in conversation
       String speakText = agentResponse.speak;
       if (agentResponse.done) {
         if (speakText.isNotEmpty &&
@@ -340,18 +340,19 @@ class AgentController extends ChangeNotifier {
       }
 
       String displayText = speakText;
-      if (agentResponse.thought.isNotEmpty) {
-        displayText = '💭 ${agentResponse.thought}\n\n$displayText';
-      }
       if (agentResponse.actions.isNotEmpty) {
         final actionSummary = agentResponse.actions
             .map(
               (a) => '⚡ ${a.type}${a.params.isNotEmpty ? ': ${a.params}' : ''}',
             )
             .join('\n');
-        displayText = '$displayText\n\n$actionSummary';
+        displayText = displayText.isEmpty
+            ? actionSummary
+            : '$displayText\n\n$actionSummary';
       }
-      _addConversation(displayText, false, screenshotBytes: screenshotBytes);
+      if (displayText.trim().isNotEmpty) {
+        _addConversation(displayText, false, screenshotBytes: screenshotBytes);
+      }
 
       if (_cancelRequested) break;
 
@@ -742,8 +743,8 @@ class AgentController extends ChangeNotifier {
   }
 
   String _trimForTts(String text) {
-    // Remove thinking/emoji markers for cleaner TTS
-    String cleaned = text.replaceAll(RegExp(r'💭.*?\n'), '');
+    // Remove action/emoji markers for cleaner TTS
+    String cleaned = text;
     cleaned = cleaned.replaceAll(RegExp(r'⚡.*?\n'), '');
     cleaned = cleaned.trim();
     if (cleaned.length > 300) {

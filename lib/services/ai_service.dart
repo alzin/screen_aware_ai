@@ -15,14 +15,12 @@ class AgentAction {
 
 /// Parsed structured response from the AI agent.
 class AgentResponse {
-  final String thought;
   final List<AgentAction> actions;
   final String speak;
   final bool done;
   final String rawResponse;
 
   AgentResponse({
-    required this.thought,
     required this.actions,
     required this.speak,
     required this.done,
@@ -40,7 +38,6 @@ class AgentResponse {
         .toList();
 
     return AgentResponse(
-      thought: json['thought'] as String? ?? '',
       actions: actionsList,
       speak: json['speak'] as String? ?? '',
       done: json['done'] as bool? ?? true,
@@ -50,7 +47,6 @@ class AgentResponse {
 
   factory AgentResponse.fallback(String raw) {
     return AgentResponse(
-      thought: '',
       actions: [],
       speak: raw.length > 300 ? '${raw.substring(0, 297)}...' : raw,
       done: true,
@@ -123,12 +119,10 @@ CRITICAL RULES:
 6. Keep "speak" concise — it will be read aloud. Only include "speak" text when you have something meaningful to tell the user (e.g., task done, error, or asking for clarification). For intermediate steps, use an empty string.
 7. If you cannot perform an action or need more info, explain in "speak" and set "done": true.
 8. When asked to read/describe screen content, read it from the screenshot and UI tree, speak it, and set "done": true.
-9. Always provide your reasoning in "thought".
-10. Use the UI tree "package" field to confirm which app is in the foreground.
+9. Use the UI tree "package" field to confirm which app is in the foreground.
 
 RESPONSE FORMAT (strict JSON, one action only):
 {
-  "thought": "I see the home screen. I need to open WhatsApp first.",
   "actions": [
     {"type": "open_app", "package": "com.whatsapp"}
   ],
