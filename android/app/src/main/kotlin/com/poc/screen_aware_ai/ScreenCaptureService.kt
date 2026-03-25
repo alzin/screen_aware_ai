@@ -23,9 +23,10 @@ import android.os.Looper
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.WindowManager
-import java.io.File
-import java.io.FileOutputStream
+import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.max
+import kotlin.math.roundToInt
 
 class ScreenCaptureService : Service() {
 
@@ -36,6 +37,8 @@ class ScreenCaptureService : Service() {
         private const val NOTIFICATION_ID = 1
         // Use a sentinel that does NOT collide with Activity.RESULT_OK (-1)
         private const val RESULT_CODE_DEFAULT = 0
+        private const val MAX_UPLOAD_DIMENSION = 1280
+        private const val JPEG_QUALITY = 72
     }
 
     private var mediaProjection: MediaProjection? = null
@@ -176,7 +179,7 @@ class ScreenCaptureService : Service() {
         Log.d(TAG, "setupVirtualDisplay: virtualDisplay=${virtualDisplay != null}")
     }
 
-    fun captureScreen(context: Context, callback: (String?) -> Unit) {
+    fun captureScreen(callback: (ByteArray?) -> Unit) {
         val reader = imageReader
         if (reader == null) {
             Log.w(TAG, "captureScreen: imageReader is null, not initialized")
@@ -191,8 +194,6 @@ class ScreenCaptureService : Service() {
             return
         }
 
-        val appContext = context.applicationContext
-
         workerHandler.post {
             // Strategy 1: Try to acquire the latest available frame directly.
             // This is the fastest path and avoids timeouts when the display
@@ -201,8 +202,7 @@ class ScreenCaptureService : Service() {
             try {
                 val image = reader.acquireLatestImage()
                 if (image != null) {
-                    val path = saveImageToFile(appContext, image)
-                    callback(path)
+                    callback(encodeImageForUpload(image))
                     return@post
                 }
             } catch (e: Exception) {
@@ -220,8 +220,7 @@ class ScreenCaptureService : Service() {
                     try {
                         val image = ir.acquireLatestImage()
                         if (image != null) {
-                            val path = saveImageToFile(appContext, image)
-                            callback(path)
+                            callback(encodeImageForUpload(image))
                         } else {
                             Log.w(TAG, "captureScreen: acquireLatestImage returned null in listener")
                             callback(null)
@@ -244,7 +243,7 @@ class ScreenCaptureService : Service() {
         }
     }
 
-    private fun saveImageToFile(context: Context, image: Image): String? {
+    private fun encodeImageForUpload(image: Image): ByteArray? {
         try {
             val planes = image.planes
             val buffer = planes[0].buffer
@@ -258,64 +257,46 @@ class ScreenCaptureService : Service() {
                 Bitmap.Config.ARGB_8888
             )
             bitmap.copyPixelsFromBuffer(buffer)
-            image.close()
+            image.closeSafely()
 
             val croppedBitmap = Bitmap.createBitmap(bitmap, 0, 0, screenWidth, screenHeight)
             if (croppedBitmap != bitmap) bitmap.recycle()
 
-            // Use persistent filesDir instead of cacheDir to prevent system purging
-            val screenshotsDir = File(context.filesDir, "screenshots")
-            if (!screenshotsDir.exists()) {
-                screenshotsDir.mkdirs()
+            val uploadBitmap = downscaleBitmap(croppedBitmap)
+            if (uploadBitmap != croppedBitmap) {
+                croppedBitmap.recycle()
             }
 
-            // Cleanup old screenshots before saving new one
-            cleanupOldScreenshots(screenshotsDir, maxCount = 50)
+            val output = ByteArrayOutputStream()
+            uploadBitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, output)
+            uploadBitmap.recycle()
 
-            val file = File(screenshotsDir, "screenshot_${System.currentTimeMillis()}.png")
-            FileOutputStream(file).use { out ->
-                croppedBitmap.compress(Bitmap.CompressFormat.PNG, 85, out)
-            }
-            croppedBitmap.recycle()
-
-            Log.d(TAG, "captureScreen: saved to ${file.absolutePath}")
-            return file.absolutePath
+            val encodedBytes = output.toByteArray()
+            Log.d(TAG, "captureScreen: encoded ${encodedBytes.size} JPEG bytes")
+            return encodedBytes
         } catch (e: Exception) {
-            Log.e(TAG, "saveImageToFile: error", e)
-            image.close()
+            Log.e(TAG, "encodeImageForUpload: error", e)
+            image.closeSafely()
             return null
         }
     }
 
-    private fun cleanupOldScreenshots(dir: File, maxCount: Int) {
-        try {
-            val files = dir.listFiles { file -> file.isFile && file.name.startsWith("screenshot_") }
-            if (files != null && files.size >= maxCount) {
-                // Sort by last modified ascending (oldest first)
-                files.sortBy { it.lastModified() }
-                
-                // Delete oldest files until we are below the limit
-                val numToDelete = files.size - maxCount + 1
-                for (i in 0 until numToDelete) {
-                    if (files[i].delete()) {
-                        Log.d(TAG, "cleanupOldScreenshots: deleted old screenshot ${files[i].name}")
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "cleanupOldScreenshots: failed", e)
+    private fun downscaleBitmap(source: Bitmap): Bitmap {
+        val longestSide = max(source.width, source.height)
+        if (longestSide <= MAX_UPLOAD_DIMENSION) {
+            return source
         }
+
+        val scale = MAX_UPLOAD_DIMENSION.toFloat() / longestSide.toFloat()
+        val targetWidth = (source.width * scale).roundToInt().coerceAtLeast(1)
+        val targetHeight = (source.height * scale).roundToInt().coerceAtLeast(1)
+        return Bitmap.createScaledBitmap(source, targetWidth, targetHeight, true)
     }
 
-    fun clearScreenshots(context: Context) {
+    private fun Image.closeSafely() {
         try {
-            val screenshotsDir = File(context.filesDir, "screenshots")
-            if (screenshotsDir.exists()) {
-                val deleted = screenshotsDir.listFiles()?.map { it.delete() }?.all { it } ?: true
-                Log.d(TAG, "clearScreenshots: deleted all screenshots: $deleted")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "clearScreenshots: failed", e)
+            close()
+        } catch (_: Exception) {
         }
     }
 

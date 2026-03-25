@@ -85,8 +85,8 @@ class MainActivity : FlutterActivity() {
                                 service.initializeProjection(projectionResultCode, projectionData!!)
                                 // If initialization succeeded, capture immediately
                                 if (service.isInitialized) {
-                                    service.captureScreen(this) { path ->
-                                        runOnUiThread { result.success(path) }
+                                    service.captureScreen { bytes ->
+                                        runOnUiThread { result.success(bytes) }
                                     }
                                 } else {
                                     result.error("NOT_INITIALIZED", "Failed to reinitialize, need new permission", null)
@@ -104,8 +104,8 @@ class MainActivity : FlutterActivity() {
                             result.error("NOT_INITIALIZED", "Service not initialized, need permission", null)
                         }
                     } else {
-                        service.captureScreen(this) { path ->
-                            runOnUiThread { result.success(path) }
+                        service.captureScreen { bytes ->
+                            runOnUiThread { result.success(bytes) }
                         }
                     }
                 }
@@ -223,23 +223,6 @@ class MainActivity : FlutterActivity() {
                     if (service != null) {
                         service.hideOverlay()
                         stopService(Intent(this, OverlayService::class.java))
-                    }
-                    result.success(true)
-                }
-                "clearScreenshots" -> {
-                    val service = ScreenCaptureService.instance
-                    if (service != null) {
-                        service.clearScreenshots(this)
-                    } else {
-                        // Even if service is null, we can delete the files manually
-                        try {
-                            val screenshotsDir = java.io.File(filesDir, "screenshots")
-                            if (screenshotsDir.exists()) {
-                                screenshotsDir.listFiles()?.forEach { it.delete() }
-                            }
-                        } catch (e: Exception) {
-                            Log.e(TAG, "clearScreenshots: manual delete failed", e)
-                        }
                     }
                     result.success(true)
                 }

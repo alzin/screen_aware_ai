@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:google_generative_ai/google_generative_ai.dart';
 
 /// Represents a single action the AI wants to perform.
@@ -31,10 +31,12 @@ class AgentResponse {
 
   factory AgentResponse.fromJson(Map<String, dynamic> json, String raw) {
     final actionsList = (json['actions'] as List<dynamic>? ?? [])
-        .map((a) => AgentAction(
-              type: a['type'] as String? ?? 'wait',
-              params: Map<String, dynamic>.from(a as Map)..remove('type'),
-            ))
+        .map(
+          (a) => AgentAction(
+            type: a['type'] as String? ?? 'wait',
+            params: Map<String, dynamic>.from(a as Map)..remove('type'),
+          ),
+        )
         .toList();
 
     return AgentResponse(
@@ -140,9 +142,7 @@ RESPONSE FORMAT (strict JSON, one action only):
     _model = GenerativeModel(
       model: 'gemini-3.1-flash-lite-preview',
       apiKey: apiKey,
-      generationConfig: GenerationConfig(
-        responseMimeType: 'application/json',
-      ),
+      generationConfig: GenerationConfig(responseMimeType: 'application/json'),
       systemInstruction: Content.system(_systemPrompt),
     );
     _chat = _model!.startChat();
@@ -151,12 +151,14 @@ RESPONSE FORMAT (strict JSON, one action only):
   /// Send a message with an optional screenshot, screen size, and UI tree.
   Future<AgentResponse> agentChat(
     String message, {
-    String? imagePath,
+    Uint8List? imageBytes,
     Map<String, int>? screenSize,
     String? uiTree,
   }) async {
     if (!isConfigured) {
-      return AgentResponse.fallback('AI not configured. Please set your API key.');
+      return AgentResponse.fallback(
+        'AI not configured. Please set your API key.',
+      );
     }
 
     try {
@@ -164,7 +166,9 @@ RESPONSE FORMAT (strict JSON, one action only):
       final buffer = StringBuffer();
 
       if (screenSize != null) {
-        buffer.writeln('[Screen: ${screenSize['width']}x${screenSize['height']} pixels]');
+        buffer.writeln(
+          '[Screen: ${screenSize['width']}x${screenSize['height']} pixels]',
+        );
       }
 
       if (uiTree != null) {
@@ -177,11 +181,10 @@ RESPONSE FORMAT (strict JSON, one action only):
       final fullMessage = buffer.toString();
 
       Content content;
-      if (imagePath != null) {
-        final imageBytes = await File(imagePath).readAsBytes();
+      if (imageBytes != null) {
         content = Content.multi([
           TextPart(fullMessage),
-          DataPart('image/png', imageBytes),
+          DataPart('image/jpeg', imageBytes),
         ]);
       } else {
         content = Content('user', [TextPart(fullMessage)]);

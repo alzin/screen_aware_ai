@@ -34,18 +34,18 @@ class ScreenCaptureManager {
     }
   }
 
-  /// Capture the current screen and return the file path.
+  /// Capture the current screen and return compressed image bytes.
   /// Automatically handles reinitialization if the capture service
   /// lost its projection (e.g., after app switch or service restart).
-  Future<String?> captureScreen() async {
+  Future<Uint8List?> captureScreen() async {
     if (!_hasPermission) {
       final granted = await requestPermission();
       if (!granted) return null;
     }
 
     try {
-      final path = await _channel.invokeMethod<String>('captureScreen');
-      return path;
+      final bytes = await _channel.invokeMethod<Uint8List>('captureScreen');
+      return bytes;
     } on PlatformException catch (e) {
       if (e.code == 'NOT_INITIALIZED') {
         // Service exists but lost its MediaProjection — wait for
@@ -54,8 +54,8 @@ class ScreenCaptureManager {
         print('Screen capture not initialized, waiting and retrying...');
         await Future.delayed(const Duration(milliseconds: 800));
         try {
-          final path = await _channel.invokeMethod<String>('captureScreen');
-          return path;
+          final bytes = await _channel.invokeMethod<Uint8List>('captureScreen');
+          return bytes;
         } on PlatformException catch (retryError) {
           if (retryError.code == 'NOT_INITIALIZED' ||
               retryError.code == 'NO_SERVICE') {
@@ -66,8 +66,10 @@ class ScreenCaptureManager {
             if (!granted) return null;
             // Final attempt after fresh permission
             try {
-              final path = await _channel.invokeMethod<String>('captureScreen');
-              return path;
+              final bytes = await _channel.invokeMethod<Uint8List>(
+                'captureScreen',
+              );
+              return bytes;
             } catch (finalError) {
               print('Final capture attempt failed: $finalError');
               return null;
@@ -83,8 +85,8 @@ class ScreenCaptureManager {
         final granted = await requestPermission();
         if (!granted) return null;
         try {
-          final path = await _channel.invokeMethod<String>('captureScreen');
-          return path;
+          final bytes = await _channel.invokeMethod<Uint8List>('captureScreen');
+          return bytes;
         } catch (retryError) {
           print('Capture after permission re-request failed: $retryError');
           return null;
@@ -228,15 +230,6 @@ class ScreenCaptureManager {
     } catch (e) {
       print('Error pressing home: $e');
       return false;
-    }
-  }
-
-  /// Delete all saved screenshots
-  Future<void> clearScreenshots() async {
-    try {
-      await _channel.invokeMethod('clearScreenshots');
-    } catch (e) {
-      print('Error clearing screenshots: $e');
     }
   }
 

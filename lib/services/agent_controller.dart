@@ -18,13 +18,13 @@ enum AgentState {
 class ConversationEntry {
   final String text;
   final bool isUser;
-  final String? screenshotPath;
+  final Uint8List? screenshotBytes;
   final DateTime timestamp;
 
   ConversationEntry({
     required this.text,
     required this.isUser,
-    this.screenshotPath,
+    this.screenshotBytes,
     DateTime? timestamp,
   }) : timestamp = timestamp ?? DateTime.now();
 }
@@ -60,8 +60,8 @@ class AgentController extends ChangeNotifier {
       'I can see your screen and help you interact with apps';
   String get statusMessage => _statusMessage;
 
-  String? _lastScreenshotPath;
-  String? get lastScreenshotPath => _lastScreenshotPath;
+  Uint8List? _lastScreenshotBytes;
+  Uint8List? get lastScreenshotBytes => _lastScreenshotBytes;
 
   String? _currentTranscript = '';
   String? get currentTranscript => _currentTranscript;
@@ -298,9 +298,9 @@ class AgentController extends ChangeNotifier {
       final screenshotFuture = _captureScreenWithRetry();
       final uiSnapshotFuture = _fetchUiSnapshot();
 
-      final screenshotPath = await screenshotFuture;
-      if (screenshotPath != null) {
-        _lastScreenshotPath = screenshotPath;
+      final screenshotBytes = await screenshotFuture;
+      if (screenshotBytes != null) {
+        _lastScreenshotBytes = screenshotBytes;
       }
 
       if (_cancelRequested) break;
@@ -318,7 +318,7 @@ class AgentController extends ChangeNotifier {
 
       final agentResponse = await _aiService.agentChat(
         currentMessage,
-        imagePath: screenshotPath,
+        imageBytes: screenshotBytes,
         screenSize: screenSize,
         uiTree: uiTree,
       );
@@ -351,7 +351,7 @@ class AgentController extends ChangeNotifier {
             .join('\n');
         displayText = '$displayText\n\n$actionSummary';
       }
-      _addConversation(displayText, false, screenshotPath: screenshotPath);
+      _addConversation(displayText, false, screenshotBytes: screenshotBytes);
 
       if (_cancelRequested) break;
 
@@ -423,11 +423,11 @@ class AgentController extends ChangeNotifier {
   /// After navigating to another app, the first capture attempt may return null
   /// because the VirtualDisplay hasn't rendered a fresh frame yet. Retrying
   /// with increasing delays ensures we eventually get a valid screenshot.
-  Future<String?> _captureScreenWithRetry({int maxRetries = 3}) async {
+  Future<Uint8List?> _captureScreenWithRetry({int maxRetries = 3}) async {
     for (int i = 0; i < maxRetries; i++) {
       try {
-        final path = await _screenCapture.captureScreen();
-        if (path != null) return path;
+        final bytes = await _screenCapture.captureScreen();
+        if (bytes != null) return bytes;
       } catch (e) {
         print('Screenshot capture attempt ${i + 1} failed: $e');
       }
@@ -757,12 +757,27 @@ class AgentController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _addConversation(String text, bool isUser, {String? screenshotPath}) {
+  Future<bool> capturePreview() async {
+    final screenshotBytes = await _captureScreenWithRetry();
+    if (screenshotBytes == null) {
+      return false;
+    }
+
+    _lastScreenshotBytes = screenshotBytes;
+    notifyListeners();
+    return true;
+  }
+
+  void _addConversation(
+    String text,
+    bool isUser, {
+    Uint8List? screenshotBytes,
+  }) {
     _conversation.add(
       ConversationEntry(
         text: text,
         isUser: isUser,
-        screenshotPath: screenshotPath,
+        screenshotBytes: screenshotBytes,
       ),
     );
     notifyListeners();
@@ -770,10 +785,9 @@ class AgentController extends ChangeNotifier {
 
   void clearConversation() {
     _conversation.clear();
-    _lastScreenshotPath = null;
+    _lastScreenshotBytes = null;
     _isAskingForFurtherHelp = false;
     _aiService.resetChat();
-    _screenCapture.clearScreenshots();
     notifyListeners();
   }
 
