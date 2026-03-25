@@ -82,12 +82,32 @@ class AgentController extends ChangeNotifier {
   bool _cancelRequested = false;
 
   bool _isAskingForFurtherHelp = false;
+  bool? _cachedAccessibilityEnabled;
 
   AiService get aiService => _aiService;
   ScreenCaptureManager get screenCapture => _screenCapture;
 
   /// Whether a cancel has been requested by the user.
   bool get cancelRequested => _cancelRequested;
+
+  Future<bool> _getAccessibilityEnabled({bool forceRefresh = false}) async {
+    if (!forceRefresh && _cachedAccessibilityEnabled != null) {
+      return _cachedAccessibilityEnabled!;
+    }
+
+    final isEnabled = await _screenCapture.isAccessibilityEnabled();
+    _cachedAccessibilityEnabled = isEnabled;
+    return isEnabled;
+  }
+
+  Future<bool> _ensureAccessibilityEnabled() async {
+    final isEnabled = await _getAccessibilityEnabled();
+    if (isEnabled) {
+      return true;
+    }
+
+    return _getAccessibilityEnabled(forceRefresh: true);
+  }
 
   /// Force-stop the current agent loop immediately.
   void requestCancel() {
@@ -194,7 +214,7 @@ class AgentController extends ChangeNotifier {
     }
 
     // Check if accessibility service is enabled
-    final hasAccessibility = await _screenCapture.isAccessibilityEnabled();
+    final hasAccessibility = await _getAccessibilityEnabled(forceRefresh: true);
     if (!hasAccessibility) {
       _addConversation(
         '⚠️ Accessibility service not enabled. I can see the screen but cannot perform actions (tap, type, swipe). '
@@ -616,7 +636,7 @@ class AgentController extends ChangeNotifier {
       return beforeSnapshot;
     }
 
-    final canObserveUi = await _screenCapture.isAccessibilityEnabled();
+    final canObserveUi = await _getAccessibilityEnabled();
     if (!canObserveUi) {
       return beforeSnapshot;
     }
@@ -656,7 +676,7 @@ class AgentController extends ChangeNotifier {
     const accessibilityActions = {'tap', 'type', 'swipe', 'back', 'home'};
 
     if (accessibilityActions.contains(action.type)) {
-      final hasAccessibility = await _screenCapture.isAccessibilityEnabled();
+      final hasAccessibility = await _ensureAccessibilityEnabled();
       if (!hasAccessibility) {
         _addConversation(
           '⚠️ Cannot execute "${action.type}" — accessibility service not enabled. '
