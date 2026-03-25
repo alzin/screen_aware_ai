@@ -152,6 +152,7 @@ class ScreenActionService : AccessibilityService() {
             val isCheckable = node.isCheckable
             val isScrollable = node.isScrollable
             val isVisible = node.isVisibleToUser
+            val isFocused = node.isFocused
             val isFocusable = node.isFocusable
             val isLongClickable = node.isLongClickable
 
@@ -178,6 +179,7 @@ class ScreenActionService : AccessibilityService() {
                     if (!contentDesc.isNullOrBlank()) put("desc", contentDesc)
                     if (isClickable) put("clickable", true)
                     if (isEditable) put("editable", true)
+                    if (isFocused) put("focused", true)
                     if (isCheckable) {
                         put("checkable", true)
                         put("checked", node.isChecked)
