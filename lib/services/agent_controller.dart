@@ -303,7 +303,10 @@ class AgentController extends ChangeNotifier {
       _statusMessage = '📸 Capturing screen... (step $step)';
       notifyListeners();
 
-      String? screenshotPath = await _captureScreenWithRetry();
+      final screenshotFuture = _captureScreenWithRetry();
+      final uiSnapshotFuture = _fetchUiSnapshot();
+
+      final screenshotPath = await screenshotFuture;
       if (screenshotPath != null) {
         _lastScreenshotPath = screenshotPath;
       }
@@ -311,7 +314,7 @@ class AgentController extends ChangeNotifier {
       if (_cancelRequested) break;
 
       // 1b. Fetch UI tree from accessibility service (runs in parallel-ready)
-      final uiSnapshot = await _fetchUiSnapshot();
+      final uiSnapshot = await uiSnapshotFuture;
       final uiTree = uiSnapshot?.rawTree;
 
       if (_cancelRequested) break;
