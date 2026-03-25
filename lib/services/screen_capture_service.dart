@@ -6,7 +6,7 @@ class ScreenCaptureManager {
   bool _hasPermission = false;
   bool get hasPermission => _hasPermission;
 
-  /// Callback fired when the native overlay stop button is tapped.
+  /// Callback fired when the native stop notification action is tapped.
   VoidCallback? onForceStop;
 
   bool _handlerRegistered = false;
@@ -57,7 +57,8 @@ class ScreenCaptureManager {
           final path = await _channel.invokeMethod<String>('captureScreen');
           return path;
         } on PlatformException catch (retryError) {
-          if (retryError.code == 'NOT_INITIALIZED' || retryError.code == 'NO_SERVICE') {
+          if (retryError.code == 'NOT_INITIALIZED' ||
+              retryError.code == 'NO_SERVICE') {
             // Reinitialization failed — need fresh permission grant
             print('Reinitialization failed, re-requesting permission...');
             _hasPermission = false;
@@ -112,7 +113,9 @@ class ScreenCaptureManager {
   /// Check if accessibility service is enabled
   Future<bool> isAccessibilityEnabled() async {
     try {
-      final result = await _channel.invokeMethod<bool>('isAccessibilityEnabled');
+      final result = await _channel.invokeMethod<bool>(
+        'isAccessibilityEnabled',
+      );
       return result ?? false;
     } catch (e) {
       return false;
@@ -169,7 +172,12 @@ class ScreenCaptureManager {
   }
 
   /// Perform a swipe gesture
-  Future<bool> performSwipe(double startX, double startY, double endX, double endY) async {
+  Future<bool> performSwipe(
+    double startX,
+    double startY,
+    double endX,
+    double endY,
+  ) async {
     try {
       final result = await _channel.invokeMethod<bool>('performSwipe', {
         'startX': startX,
@@ -232,46 +240,26 @@ class ScreenCaptureManager {
     }
   }
 
-  // ─── Overlay stop button ────────────────────────────────────────────
+  // ─── Stop controls ──────────────────────────────────────────────────
 
-  /// Check if the app has overlay (draw-over-other-apps) permission.
-  Future<bool> hasOverlayPermission() async {
-    try {
-      final result = await _channel.invokeMethod<bool>('hasOverlayPermission');
-      return result ?? false;
-    } catch (e) {
-      print('Error checking overlay permission: $e');
-      return false;
-    }
-  }
-
-  /// Open the system settings page for overlay permission.
-  Future<void> requestOverlayPermission() async {
-    try {
-      await _channel.invokeMethod('requestOverlayPermission');
-    } catch (e) {
-      print('Error requesting overlay permission: $e');
-    }
-  }
-
-  /// Show the floating stop button overlay on top of all apps.
+  /// Show the persistent stop notification while Lucy is active.
   Future<bool> showStopOverlay() async {
     _ensureHandler();
     try {
       final result = await _channel.invokeMethod<bool>('showStopOverlay');
       return result ?? false;
     } catch (e) {
-      print('Error showing stop overlay: $e');
+      print('Error showing stop controls: $e');
       return false;
     }
   }
 
-  /// Hide the floating stop button overlay.
+  /// Hide the persistent stop notification.
   Future<void> hideStopOverlay() async {
     try {
       await _channel.invokeMethod('hideStopOverlay');
     } catch (e) {
-      print('Error hiding stop overlay: $e');
+      print('Error hiding stop controls: $e');
     }
   }
 }

@@ -17,6 +17,7 @@ import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.IBinder
 import android.os.Looper
 import android.util.DisplayMetrics
@@ -43,6 +44,8 @@ class ScreenCaptureService : Service() {
     private var projectionCallback: MediaProjection.Callback? = null
     // Generation counter to guard against stale callbacks
     private var projectionGeneration = 0L
+    private var captureThread: HandlerThread? = null
+    private var captureHandler: Handler? = null
     var screenWidth = 0
         private set
     var screenHeight = 0
@@ -56,6 +59,8 @@ class ScreenCaptureService : Service() {
         super.onCreate()
         instance = this
         createNotificationChannel()
+        captureThread = HandlerThread("ScreenCaptureWorker").apply { start() }
+        captureHandler = Handler(captureThread!!.looper)
         getScreenMetrics()
         Log.d(TAG, "onCreate: service created, screenWidth=$screenWidth, screenHeight=$screenHeight")
     }
@@ -179,54 +184,64 @@ class ScreenCaptureService : Service() {
             return
         }
 
-        // Strategy 1: Try to acquire the latest available frame directly.
-        // This is the fastest path and avoids timeouts when the display
-        // hasn't produced a new frame (e.g., static screen content).
-        // The frame in the buffer IS the current screen — no need to drain and wait.
-        try {
-            val image = reader.acquireLatestImage()
-            if (image != null) {
-                val path = saveImageToFile(context, image)
-                callback(path)
-                return
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "captureScreen: direct acquire failed: ${e.message}")
+        val workerHandler = captureHandler
+        if (workerHandler == null) {
+            Log.w(TAG, "captureScreen: capture handler is null")
+            callback(null)
+            return
         }
 
-        // Strategy 2: No image available yet — wait for the next frame
-        // from the VirtualDisplay (e.g., right after initialization).
-        Log.d(TAG, "captureScreen: no image in buffer, waiting for next frame")
-        val handler = Handler(Looper.getMainLooper())
-        val done = AtomicBoolean(false)
+        val appContext = context.applicationContext
 
-        reader.setOnImageAvailableListener({ ir ->
-            if (done.compareAndSet(false, true)) {
-                ir.setOnImageAvailableListener(null, null)
-                try {
-                    val image = ir.acquireLatestImage()
-                    if (image != null) {
-                        val path = saveImageToFile(context, image)
-                        callback(path)
-                    } else {
-                        Log.w(TAG, "captureScreen: acquireLatestImage returned null in listener")
+        workerHandler.post {
+            // Strategy 1: Try to acquire the latest available frame directly.
+            // This is the fastest path and avoids timeouts when the display
+            // hasn't produced a new frame (e.g., static screen content).
+            // The frame in the buffer IS the current screen — no need to drain and wait.
+            try {
+                val image = reader.acquireLatestImage()
+                if (image != null) {
+                    val path = saveImageToFile(appContext, image)
+                    callback(path)
+                    return@post
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "captureScreen: direct acquire failed: ${e.message}")
+            }
+
+            // Strategy 2: No image available yet — wait for the next frame
+            // from the VirtualDisplay (e.g., right after initialization).
+            Log.d(TAG, "captureScreen: no image in buffer, waiting for next frame")
+            val done = AtomicBoolean(false)
+
+            reader.setOnImageAvailableListener({ ir ->
+                if (done.compareAndSet(false, true)) {
+                    ir.setOnImageAvailableListener(null, null)
+                    try {
+                        val image = ir.acquireLatestImage()
+                        if (image != null) {
+                            val path = saveImageToFile(appContext, image)
+                            callback(path)
+                        } else {
+                            Log.w(TAG, "captureScreen: acquireLatestImage returned null in listener")
+                            callback(null)
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "captureScreen: error in listener", e)
                         callback(null)
                     }
-                } catch (e: Exception) {
-                    Log.e(TAG, "captureScreen: error in listener", e)
+                }
+            }, workerHandler)
+
+            // Timeout: 1.5 seconds (reduced from 3s since this is only the fallback path)
+            workerHandler.postDelayed({
+                if (done.compareAndSet(false, true)) {
+                    reader.setOnImageAvailableListener(null, null)
+                    Log.w(TAG, "captureScreen: timed out waiting for frame (1.5s)")
                     callback(null)
                 }
-            }
-        }, handler)
-
-        // Timeout: 1.5 seconds (reduced from 3s since this is only the fallback path)
-        handler.postDelayed({
-            if (done.compareAndSet(false, true)) {
-                reader.setOnImageAvailableListener(null, null)
-                Log.w(TAG, "captureScreen: timed out waiting for frame (1.5s)")
-                callback(null)
-            }
-        }, 1500)
+            }, 1500)
+        }
     }
 
     private fun saveImageToFile(context: Context, image: Image): String? {
@@ -327,6 +342,10 @@ class ScreenCaptureService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         Log.d(TAG, "onDestroy: cleaning up")
+        captureHandler?.removeCallbacksAndMessages(null)
+        captureHandler = null
+        captureThread?.quitSafely()
+        captureThread = null
         // Unregister callback before stopping to prevent it from running during cleanup
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             projectionCallback?.let { cb ->

@@ -99,7 +99,7 @@ class AgentController extends ChangeNotifier {
   Future<void> initialize() async {
     await _voiceService.initialize();
 
-    // Wire native overlay stop button → requestCancel
+    // Wire native stop notification action → requestCancel
     _screenCapture.onForceStop = () {
       if (_isActive) {
         requestCancel();
@@ -176,8 +176,11 @@ class AgentController extends ChangeNotifier {
     }
 
     _isActive = true;
-    _addConversation('Agent started. Listening for your commands...', false);
-    _statusMessage = 'Listening...';
+    _addConversation(
+      'Agent started. Listening for your commands. To stop Lucy while it is in another app, open notifications and tap "Stop Lucy".',
+      false,
+    );
+    _statusMessage = 'Listening... Open notifications to stop Lucy.';
     _isAskingForFurtherHelp = false;
     notifyListeners();
 
@@ -200,17 +203,6 @@ class AgentController extends ChangeNotifier {
       );
     }
 
-    // Request overlay permission for the floating stop button
-    final hasOverlay = await _screenCapture.hasOverlayPermission();
-    if (!hasOverlay) {
-      _addConversation(
-        '⚠️ Overlay permission not granted. The floating stop button won\'t appear over other apps. '
-        'Granting "Display over other apps" permission now...',
-        false,
-      );
-      await _screenCapture.requestOverlayPermission();
-    }
-
     _listenRetryCount = 0;
     _startListening();
   }
@@ -229,7 +221,7 @@ class AgentController extends ChangeNotifier {
   Future<void> _startListening() async {
     if (!_isActive) return;
     _setState(AgentState.listening);
-    _statusMessage = '🎤 Listening...';
+    _statusMessage = '🎤 Listening... Open notifications to stop Lucy.';
     _currentTranscript = '';
     notifyListeners();
 
@@ -289,7 +281,7 @@ class AgentController extends ChangeNotifier {
     int step = 0;
     String currentMessage = userMessage;
 
-    // Show floating stop overlay on top of all apps
+    // Show persistent stop notification while Lucy is active
     await _screenCapture.showStopOverlay();
 
     // Fetch screen size once for the whole loop
@@ -409,7 +401,7 @@ class AgentController extends ChangeNotifier {
       // _captureScreenWithRetry handles this by making multiple attempts.
     }
 
-    // Always hide the overlay when the loop ends
+    // Always hide the stop notification when the loop ends
     await _screenCapture.hideStopOverlay();
 
     // Handle cancellation

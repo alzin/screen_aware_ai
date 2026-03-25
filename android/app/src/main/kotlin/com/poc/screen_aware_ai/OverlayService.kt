@@ -1,17 +1,16 @@
 package com.poc.screen_aware_ai
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
+import android.content.Context
 import android.content.Intent
-import android.graphics.Color
-import android.graphics.PixelFormat
-import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
-import android.view.Gravity
-import android.view.WindowManager
-import android.widget.LinearLayout
-import android.widget.TextView
+import android.content.pm.ServiceInfo
 
 class OverlayService : Service() {
 
@@ -19,91 +18,102 @@ class OverlayService : Service() {
         var instance: OverlayService? = null
         private const val TAG = "OverlayService"
         const val ACTION_FORCE_STOP = "com.poc.screen_aware_ai.FORCE_STOP"
+        private const val ACTION_NOTIFICATION_STOP = "com.poc.screen_aware_ai.NOTIFICATION_STOP"
+        private const val CHANNEL_ID = "lucy_stop_controls_v2"
+        private const val NOTIFICATION_ID = 2
     }
-
-    private var windowManager: WindowManager? = null
-    private var overlayView: LinearLayout? = null
 
     override fun onCreate() {
         super.onCreate()
         instance = this
-        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        createNotificationChannel()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (overlayView == null) {
-            showOverlay()
+        if (intent?.action == ACTION_NOTIFICATION_STOP) {
+            Log.d(TAG, "Stop notification action tapped — broadcasting FORCE_STOP")
+            val stopIntent = Intent(ACTION_FORCE_STOP).apply {
+                setPackage(packageName)
+            }
+            sendBroadcast(stopIntent)
+            hideOverlay()
+            stopSelf()
+            return START_NOT_STICKY
         }
+
+        showOverlay()
         return START_NOT_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun showOverlay() {
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.CENTER
+        val notification = createNotification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
         }
-
-        // Build the stop button view programmatically
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(48, 24, 48, 24)
-
-            // Red rounded pill background
-            val bg = GradientDrawable().apply {
-                setColor(Color.parseColor("#E53935"))
-                cornerRadius = 60f
-            }
-            background = bg
-
-            // Elevation/shadow
-            elevation = 16f
-
-            // "Stop" label
-            val label = TextView(this@OverlayService).apply {
-                text = "Stop"
-                textSize = 16f
-                setTextColor(Color.WHITE)
-                setTypeface(typeface, android.graphics.Typeface.BOLD)
-            }
-            addView(label)
-
-            // On tap → broadcast force-stop intent
-            setOnClickListener {
-                Log.d(TAG, "Stop button tapped — broadcasting FORCE_STOP")
-                val stopIntent = Intent(ACTION_FORCE_STOP)
-                stopIntent.setPackage(packageName)
-                sendBroadcast(stopIntent)
-            }
-        }
-
-        try {
-            windowManager?.addView(layout, params)
-            overlayView = layout
-            Log.d(TAG, "Overlay stop button shown")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to show overlay", e)
-        }
+        Log.d(TAG, "Stop notification shown")
     }
 
     fun hideOverlay() {
-        overlayView?.let {
-            try {
-                windowManager?.removeView(it)
-                Log.d(TAG, "Overlay stop button hidden")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to hide overlay", e)
-            }
-            overlayView = null
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        val notificationManager =
+            getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.cancel(NOTIFICATION_ID)
+        Log.d(TAG, "Stop notification hidden")
+    }
+
+    private fun createNotificationChannel() {
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            getString(R.string.stop_notification_channel_name),
+            NotificationManager.IMPORTANCE_DEFAULT,
+        ).apply {
+            description = getString(R.string.stop_notification_channel_description)
         }
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.createNotificationChannel(channel)
+    }
+
+    private fun createNotification(): Notification {
+        val stopIntent = Intent(this, OverlayService::class.java).apply {
+            action = ACTION_NOTIFICATION_STOP
+        }
+        val stopPendingIntent = PendingIntent.getService(
+            this,
+            0,
+            stopIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
+        val builder = Notification.Builder(this, CHANNEL_ID)
+            .setContentTitle(getString(R.string.stop_notification_title))
+            .setContentText(getString(R.string.stop_notification_text))
+            .setSmallIcon(android.R.drawable.ic_media_pause)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setCategory(Notification.CATEGORY_SERVICE)
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
+            .setTicker(getString(R.string.stop_notification_title))
+            .addAction(
+                Notification.Action.Builder(
+                    android.R.drawable.ic_media_pause,
+                    getString(R.string.stop_notification_action),
+                    stopPendingIntent,
+                ).build(),
+            )
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
+        }
+
+        return builder.build()
     }
 
     override fun onDestroy() {
