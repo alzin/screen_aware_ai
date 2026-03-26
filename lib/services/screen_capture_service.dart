@@ -124,6 +124,34 @@ class ScreenCaptureManager {
     }
   }
 
+  /// Returns a monotonically increasing sequence that advances on native
+  /// accessibility/UI change events.
+  Future<int> getUiChangeSequence() async {
+    try {
+      final result = await _channel.invokeMethod<int>('getUiChangeSequence');
+      return result ?? 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  /// Wait until the native accessibility service observes a UI change after
+  /// [sinceSequence], or until [timeoutMs] elapses.
+  Future<bool> waitForUiChange({
+    required int sinceSequence,
+    required int timeoutMs,
+  }) async {
+    try {
+      final result = await _channel.invokeMethod<bool>('waitForUiChange', {
+        'sinceSequence': sinceSequence,
+        'timeoutMs': timeoutMs,
+      });
+      return result ?? false;
+    } catch (e) {
+      return false;
+    }
+  }
+
   /// Open accessibility settings
   Future<void> openAccessibilitySettings() async {
     try {

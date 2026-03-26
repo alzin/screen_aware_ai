@@ -73,7 +73,6 @@ class AgentController extends ChangeNotifier {
   static const int _maxListenRetries = 3;
 
   static const int _maxStepsPerCommand = 10;
-  static const Duration _uiPollInterval = Duration(milliseconds: 120);
   static const Duration _tapReadyTimeout = Duration(milliseconds: 900);
   static const Duration _typeReadyTimeout = Duration(milliseconds: 900);
   static const Duration _navigationReadyTimeout = Duration(milliseconds: 1200);
@@ -277,11 +276,6 @@ class AgentController extends ChangeNotifier {
         _addConversation('Alright, stopping the agent.', false);
         await _voiceService.speak('Alright, stopping the agent.');
 
-        await Future.delayed(const Duration(milliseconds: 500));
-        while (_voiceService.isSpeaking) {
-          await Future.delayed(const Duration(milliseconds: 200));
-        }
-
         await stopAgent();
         return;
       }
@@ -399,12 +393,6 @@ class AgentController extends ChangeNotifier {
 
         final ttsText = _trimForTts(speakText);
         await _voiceService.speak(ttsText);
-
-        // Wait for TTS to finish
-        await Future.delayed(const Duration(milliseconds: 500));
-        while (_voiceService.isSpeaking && !_cancelRequested) {
-          await Future.delayed(const Duration(milliseconds: 200));
-        }
       }
 
       if (_cancelRequested) break;
@@ -642,10 +630,33 @@ class AgentController extends ChangeNotifier {
     }
 
     _UiSnapshot? latestSnapshot = beforeSnapshot;
+    var currentSnapshot = await _fetchUiSnapshot();
+    if (currentSnapshot != null) {
+      latestSnapshot = currentSnapshot;
+    }
+    if (_isActionReady(action, beforeSnapshot, currentSnapshot)) {
+      return currentSnapshot;
+    }
+
+    var uiChangeSequence = await _screenCapture.getUiChangeSequence();
     final deadline = DateTime.now().add(timeout);
 
     while (!_cancelRequested) {
-      final currentSnapshot = await _fetchUiSnapshot();
+      final remaining = deadline.difference(DateTime.now());
+      if (remaining <= Duration.zero) {
+        break;
+      }
+
+      final observedUiChange = await _screenCapture.waitForUiChange(
+        sinceSequence: uiChangeSequence,
+        timeoutMs: remaining.inMilliseconds,
+      );
+      if (!observedUiChange) {
+        break;
+      }
+
+      uiChangeSequence = await _screenCapture.getUiChangeSequence();
+      currentSnapshot = await _fetchUiSnapshot();
       if (currentSnapshot != null) {
         latestSnapshot = currentSnapshot;
       }
@@ -653,15 +664,6 @@ class AgentController extends ChangeNotifier {
       if (_isActionReady(action, beforeSnapshot, currentSnapshot)) {
         return currentSnapshot;
       }
-
-      final remaining = deadline.difference(DateTime.now());
-      if (remaining <= Duration.zero) {
-        break;
-      }
-
-      await Future.delayed(
-        remaining < _uiPollInterval ? remaining : _uiPollInterval,
-      );
     }
 
     return latestSnapshot;

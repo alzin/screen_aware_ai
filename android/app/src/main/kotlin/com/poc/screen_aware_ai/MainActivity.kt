@@ -7,6 +7,8 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.media.projection.MediaProjectionManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -20,6 +22,9 @@ class MainActivity : FlutterActivity() {
     private var pendingResult: MethodChannel.Result? = null
     private var mediaProjectionManager: MediaProjectionManager? = null
     private var methodChannel: MethodChannel? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var pendingInitializationListener: ((Boolean) -> Unit)? = null
+    private var pendingInitializationTimeout: Runnable? = null
 
     // Store projection data so we can reinitialize the service if needed.
     // IMPORTANT: Use 0 as sentinel — Activity.RESULT_OK is -1, so -1 can't be the default.
@@ -82,9 +87,9 @@ class MainActivity : FlutterActivity() {
                         if (projectionResultCode == Activity.RESULT_OK && projectionData != null) {
                             Log.w(TAG, "captureScreen: service not initialized, reinitializing with stored data")
                             try {
-                                service.initializeProjection(projectionResultCode, projectionData!!)
+                                val initialized = service.initializeProjection(projectionResultCode, projectionData!!)
                                 // If initialization succeeded, capture immediately
-                                if (service.isInitialized) {
+                                if (initialized && service.isInitialized) {
                                     service.captureScreen { bytes ->
                                         runOnUiThread { result.success(bytes) }
                                     }
@@ -111,6 +116,21 @@ class MainActivity : FlutterActivity() {
                 }
                 "isAccessibilityEnabled" -> {
                     result.success(ScreenActionService.instance != null)
+                }
+                "getUiChangeSequence" -> {
+                    result.success(ScreenActionService.instance?.getUiChangeSequence() ?: 0L)
+                }
+                "waitForUiChange" -> {
+                    val sinceSequence = call.argument<Number>("sinceSequence")?.toLong() ?: 0L
+                    val timeoutMs = call.argument<Number>("timeoutMs")?.toLong() ?: 0L
+                    val service = ScreenActionService.instance
+                    if (service != null) {
+                        service.waitForUiChange(sinceSequence, timeoutMs) { changed ->
+                            runOnUiThread { result.success(changed) }
+                        }
+                    } else {
+                        result.error("NO_SERVICE", "Accessibility service not enabled", null)
+                    }
                 }
                 "getScreenSize" -> {
                     val service = ScreenCaptureService.instance
@@ -231,6 +251,50 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    private fun clearPendingInitializationWait() {
+        pendingInitializationListener?.let { listener ->
+            ScreenCaptureService.removeInitializationListener(listener)
+        }
+        pendingInitializationListener = null
+        pendingInitializationTimeout?.let { timeout ->
+            mainHandler.removeCallbacks(timeout)
+        }
+        pendingInitializationTimeout = null
+    }
+
+    private fun resolvePendingScreenCaptureRequest(success: Boolean) {
+        clearPendingInitializationWait()
+        pendingResult?.success(success)
+        pendingResult = null
+    }
+
+    private fun awaitScreenCaptureInitialization(timeoutMs: Long = 5000L) {
+        if (ScreenCaptureService.instance?.isInitialized == true) {
+            Log.d(TAG, "awaitScreenCaptureInitialization: service already initialized")
+            resolvePendingScreenCaptureRequest(true)
+            return
+        }
+
+        val listener: (Boolean) -> Unit = { success ->
+            runOnUiThread {
+                if (pendingResult == null) return@runOnUiThread
+                Log.d(TAG, "awaitScreenCaptureInitialization: initialization completed (success=$success)")
+                resolvePendingScreenCaptureRequest(success)
+            }
+        }
+
+        pendingInitializationListener = listener
+        ScreenCaptureService.addInitializationListener(listener)
+
+        val timeout = Runnable {
+            if (pendingResult == null) return@Runnable
+            Log.w(TAG, "awaitScreenCaptureInitialization: timed out after ${timeoutMs}ms")
+            resolvePendingScreenCaptureRequest(false)
+        }
+        pendingInitializationTimeout = timeout
+        mainHandler.postDelayed(timeout, timeoutMs)
+    }
+
     private fun startCaptureService(resultCode: Int, data: Intent) {
         val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
             putExtra("resultCode", resultCode)
@@ -249,32 +313,18 @@ class MainActivity : FlutterActivity() {
 
                 Log.d(TAG, "onActivityResult: permission granted, starting capture service")
 
+                clearPendingInitializationWait()
                 startCaptureService(resultCode, data)
-
-                // Wait for the service to fully initialize before returning success.
-                // With the callback fix, onStartCommand should reliably initialize.
-                // Do NOT try to reinitialize with stored data here — on Android 14+
-                // the projection token is single-use and was already consumed by onStartCommand.
-                android.os.Handler(mainLooper).postDelayed({
-                    val service = ScreenCaptureService.instance
-                    if (service != null && service.isInitialized) {
-                        Log.d(TAG, "onActivityResult: service initialized successfully")
-                        pendingResult?.success(true)
-                    } else {
-                        Log.w(TAG, "onActivityResult: service not initialized after 1.5s")
-                        pendingResult?.success(false)
-                    }
-                    pendingResult = null
-                }, 1500)
+                awaitScreenCaptureInitialization()
             } else {
                 Log.w(TAG, "onActivityResult: permission denied or no data")
-                pendingResult?.success(false)
-                pendingResult = null
+                resolvePendingScreenCaptureRequest(false)
             }
         }
     }
 
     override fun onDestroy() {
+        clearPendingInitializationWait()
         try {
             unregisterReceiver(forceStopReceiver)
         } catch (e: Exception) {
