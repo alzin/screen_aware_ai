@@ -18,15 +18,31 @@ enum AgentState {
 class ConversationEntry {
   final String text;
   final bool isUser;
-  final String? screenshotPath;
+  final Uint8List? screenshotBytes;
   final DateTime timestamp;
 
   ConversationEntry({
     required this.text,
     required this.isUser,
-    this.screenshotPath,
+    this.screenshotBytes,
     DateTime? timestamp,
   }) : timestamp = timestamp ?? DateTime.now();
+}
+
+class _UiSnapshot {
+  final String? rawTree;
+  final String? packageName;
+  final List<Map<String, dynamic>> elements;
+  final bool hasFocusedEditable;
+
+  const _UiSnapshot({
+    required this.rawTree,
+    required this.packageName,
+    required this.elements,
+    required this.hasFocusedEditable,
+  });
+
+  String get signature => rawTree ?? '';
 }
 
 class AgentController extends ChangeNotifier {
@@ -40,11 +56,12 @@ class AgentController extends ChangeNotifier {
   final List<ConversationEntry> _conversation = [];
   List<ConversationEntry> get conversation => List.unmodifiable(_conversation);
 
-  String _statusMessage = 'I can see your screen and help you interact with apps';
+  String _statusMessage =
+      'I can see your screen and help you interact with apps';
   String get statusMessage => _statusMessage;
 
-  String? _lastScreenshotPath;
-  String? get lastScreenshotPath => _lastScreenshotPath;
+  Uint8List? _lastScreenshotBytes;
+  Uint8List? get lastScreenshotBytes => _lastScreenshotBytes;
 
   String? _currentTranscript = '';
   String? get currentTranscript => _currentTranscript;
@@ -56,16 +73,40 @@ class AgentController extends ChangeNotifier {
   static const int _maxListenRetries = 3;
 
   static const int _maxStepsPerCommand = 10;
+  static const Duration _tapReadyTimeout = Duration(milliseconds: 900);
+  static const Duration _typeReadyTimeout = Duration(milliseconds: 900);
+  static const Duration _navigationReadyTimeout = Duration(milliseconds: 1200);
+  static const Duration _openAppReadyTimeout = Duration(milliseconds: 2500);
 
   bool _cancelRequested = false;
 
   bool _isAskingForFurtherHelp = false;
+  bool? _cachedAccessibilityEnabled;
 
   AiService get aiService => _aiService;
   ScreenCaptureManager get screenCapture => _screenCapture;
 
   /// Whether a cancel has been requested by the user.
   bool get cancelRequested => _cancelRequested;
+
+  Future<bool> _getAccessibilityEnabled({bool forceRefresh = false}) async {
+    if (!forceRefresh && _cachedAccessibilityEnabled != null) {
+      return _cachedAccessibilityEnabled!;
+    }
+
+    final isEnabled = await _screenCapture.isAccessibilityEnabled();
+    _cachedAccessibilityEnabled = isEnabled;
+    return isEnabled;
+  }
+
+  Future<bool> _ensureAccessibilityEnabled() async {
+    final isEnabled = await _getAccessibilityEnabled();
+    if (isEnabled) {
+      return true;
+    }
+
+    return _getAccessibilityEnabled(forceRefresh: true);
+  }
 
   /// Force-stop the current agent loop immediately.
   void requestCancel() {
@@ -77,7 +118,7 @@ class AgentController extends ChangeNotifier {
   Future<void> initialize() async {
     await _voiceService.initialize();
 
-    // Wire native overlay stop button → requestCancel
+    // Wire native stop notification action → requestCancel
     _screenCapture.onForceStop = () {
       if (_isActive) {
         requestCancel();
@@ -93,11 +134,14 @@ class AgentController extends ChangeNotifier {
     };
 
     _voiceService.onListeningDone = () {
-      if (_state == AgentState.listening && _currentTranscript?.isEmpty == true) {
+      if (_state == AgentState.listening &&
+          _currentTranscript?.isEmpty == true) {
         if (_isActive) {
           _listenRetryCount++;
           if (_listenRetryCount > _maxListenRetries) {
-            print('Listening retry limit reached ($_maxListenRetries). Stopping.');
+            print(
+              'Listening retry limit reached ($_maxListenRetries). Stopping.',
+            );
             _listenRetryCount = 0;
             _statusMessage = 'Listening timed out. Tap to restart.';
             _setState(AgentState.idle);
@@ -151,8 +195,11 @@ class AgentController extends ChangeNotifier {
     }
 
     _isActive = true;
-    _addConversation('Agent started. Listening for your commands...', false);
-    _statusMessage = 'Listening...';
+    _addConversation(
+      'Agent started. Listening for your commands. To stop Lucy while it is in another app, open notifications and tap "Stop Lucy".',
+      false,
+    );
+    _statusMessage = 'Listening... Open notifications to stop Lucy.';
     _isAskingForFurtherHelp = false;
     notifyListeners();
 
@@ -166,24 +213,13 @@ class AgentController extends ChangeNotifier {
     }
 
     // Check if accessibility service is enabled
-    final hasAccessibility = await _screenCapture.isAccessibilityEnabled();
+    final hasAccessibility = await _getAccessibilityEnabled(forceRefresh: true);
     if (!hasAccessibility) {
       _addConversation(
         '⚠️ Accessibility service not enabled. I can see the screen but cannot perform actions (tap, type, swipe). '
         'Go to Settings → Accessibility → Lucy to enable it.',
         false,
       );
-    }
-
-    // Request overlay permission for the floating stop button
-    final hasOverlay = await _screenCapture.hasOverlayPermission();
-    if (!hasOverlay) {
-      _addConversation(
-        '⚠️ Overlay permission not granted. The floating stop button won\'t appear over other apps. '
-        'Granting "Display over other apps" permission now...',
-        false,
-      );
-      await _screenCapture.requestOverlayPermission();
     }
 
     _listenRetryCount = 0;
@@ -204,7 +240,7 @@ class AgentController extends ChangeNotifier {
   Future<void> _startListening() async {
     if (!_isActive) return;
     _setState(AgentState.listening);
-    _statusMessage = '🎤 Listening...';
+    _statusMessage = '🎤 Listening... Open notifications to stop Lucy.';
     _currentTranscript = '';
     notifyListeners();
 
@@ -224,7 +260,10 @@ class AgentController extends ChangeNotifier {
 
     if (_isAskingForFurtherHelp) {
       _isAskingForFurtherHelp = false;
-      final textLower = text.trim().toLowerCase().replaceAll(RegExp(r'[^\w\s]'), '');
+      final textLower = text.trim().toLowerCase().replaceAll(
+        RegExp(r'[^\w\s]'),
+        '',
+      );
       if (textLower.startsWith('no ') ||
           textLower == 'no' ||
           textLower == 'nope' ||
@@ -233,15 +272,9 @@ class AgentController extends ChangeNotifier {
           textLower == 'exit' ||
           textLower == 'nothing' ||
           textLower.startsWith('not ')) {
-        
         _setState(AgentState.speaking);
         _addConversation('Alright, stopping the agent.', false);
         await _voiceService.speak('Alright, stopping the agent.');
-
-        await Future.delayed(const Duration(milliseconds: 500));
-        while (_voiceService.isSpeaking) {
-          await Future.delayed(const Duration(milliseconds: 200));
-        }
 
         await stopAgent();
         return;
@@ -262,7 +295,7 @@ class AgentController extends ChangeNotifier {
     int step = 0;
     String currentMessage = userMessage;
 
-    // Show floating stop overlay on top of all apps
+    // Show persistent stop notification while Lucy is active
     await _screenCapture.showStopOverlay();
 
     // Fetch screen size once for the whole loop
@@ -276,26 +309,19 @@ class AgentController extends ChangeNotifier {
       _statusMessage = '📸 Capturing screen... (step $step)';
       notifyListeners();
 
-      String? screenshotPath = await _captureScreenWithRetry();
-      if (screenshotPath != null) {
-        _lastScreenshotPath = screenshotPath;
+      final screenshotFuture = _captureScreenWithRetry();
+      final uiSnapshotFuture = _fetchUiSnapshot();
+
+      final screenshotBytes = await screenshotFuture;
+      if (screenshotBytes != null) {
+        _lastScreenshotBytes = screenshotBytes;
       }
 
       if (_cancelRequested) break;
 
       // 1b. Fetch UI tree from accessibility service (runs in parallel-ready)
-      String? uiTree;
-      List<Map<String, dynamic>> uiElements = [];
-      try {
-        uiTree = await _screenCapture.getUITree();
-        if (uiTree != null) {
-          final parsed = jsonDecode(uiTree) as Map<String, dynamic>;
-          final elements = parsed['elements'] as List<dynamic>? ?? [];
-          uiElements = elements.cast<Map<String, dynamic>>();
-        }
-      } catch (e) {
-        print('UI tree fetch/parse failed: $e');
-      }
+      final uiSnapshot = await uiSnapshotFuture;
+      final uiTree = uiSnapshot?.rawTree;
 
       if (_cancelRequested) break;
 
@@ -306,17 +332,19 @@ class AgentController extends ChangeNotifier {
 
       final agentResponse = await _aiService.agentChat(
         currentMessage,
-        imagePath: screenshotPath,
+        imageBytes: screenshotBytes,
         screenSize: screenSize,
         uiTree: uiTree,
       );
 
       if (_cancelRequested) break;
 
-      // Show AI thought + speak in conversation
+      // Show AI response and action summary in conversation
       String speakText = agentResponse.speak;
       if (agentResponse.done) {
-        if (speakText.isNotEmpty && !speakText.endsWith(' ') && !speakText.endsWith('\n')) {
+        if (speakText.isNotEmpty &&
+            !speakText.endsWith(' ') &&
+            !speakText.endsWith('\n')) {
           speakText += ' ';
         }
         speakText += 'Do you need any further help?';
@@ -326,16 +354,19 @@ class AgentController extends ChangeNotifier {
       }
 
       String displayText = speakText;
-      if (agentResponse.thought.isNotEmpty) {
-        displayText = '💭 ${agentResponse.thought}\n\n$displayText';
-      }
       if (agentResponse.actions.isNotEmpty) {
         final actionSummary = agentResponse.actions
-            .map((a) => '⚡ ${a.type}${a.params.isNotEmpty ? ': ${a.params}' : ''}')
+            .map(
+              (a) => '⚡ ${a.type}${a.params.isNotEmpty ? ': ${a.params}' : ''}',
+            )
             .join('\n');
-        displayText = '$displayText\n\n$actionSummary';
+        displayText = displayText.isEmpty
+            ? actionSummary
+            : '$displayText\n\n$actionSummary';
       }
-      _addConversation(displayText, false, screenshotPath: screenshotPath);
+      if (displayText.trim().isNotEmpty) {
+        _addConversation(displayText, false, screenshotBytes: screenshotBytes);
+      }
 
       if (_cancelRequested) break;
 
@@ -345,15 +376,11 @@ class AgentController extends ChangeNotifier {
         _statusMessage = '⚡ Executing actions... (step $step)';
         notifyListeners();
 
+        var latestSnapshot = uiSnapshot;
         for (final action in agentResponse.actions) {
           if (_cancelRequested) break;
-          await _executeAction(action, uiElements);
+          latestSnapshot = await _executeAction(action, latestSnapshot);
         }
-
-        if (_cancelRequested) break;
-
-        // Brief wait after actions for the UI to settle
-        await Future.delayed(const Duration(milliseconds: 300));
       }
 
       if (_cancelRequested) break;
@@ -366,12 +393,6 @@ class AgentController extends ChangeNotifier {
 
         final ttsText = _trimForTts(speakText);
         await _voiceService.speak(ttsText);
-
-        // Wait for TTS to finish
-        await Future.delayed(const Duration(milliseconds: 500));
-        while (_voiceService.isSpeaking && !_cancelRequested) {
-          await Future.delayed(const Duration(milliseconds: 200));
-        }
       }
 
       if (_cancelRequested) break;
@@ -382,13 +403,14 @@ class AgentController extends ChangeNotifier {
       }
 
       // Not done → continue the loop with a follow-up message
-      currentMessage = 'I have executed the actions. Here is the updated screen. Continue with the task.';
+      currentMessage =
+          'I have executed the actions. Here is the updated screen. Continue with the task.';
       // If screenshot capture might fail next iteration, the AI will still
       // receive the message but without an image. The retry logic in
       // _captureScreenWithRetry handles this by making multiple attempts.
     }
 
-    // Always hide the overlay when the loop ends
+    // Always hide the stop notification when the loop ends
     await _screenCapture.hideStopOverlay();
 
     // Handle cancellation
@@ -399,7 +421,10 @@ class AgentController extends ChangeNotifier {
     }
 
     if (step >= _maxStepsPerCommand) {
-      _addConversation('⚠️ Reached maximum steps ($_maxStepsPerCommand). Stopping.', false);
+      _addConversation(
+        '⚠️ Reached maximum steps ($_maxStepsPerCommand). Stopping.',
+        false,
+      );
     }
   }
 
@@ -407,11 +432,11 @@ class AgentController extends ChangeNotifier {
   /// After navigating to another app, the first capture attempt may return null
   /// because the VirtualDisplay hasn't rendered a fresh frame yet. Retrying
   /// with increasing delays ensures we eventually get a valid screenshot.
-  Future<String?> _captureScreenWithRetry({int maxRetries = 3}) async {
+  Future<Uint8List?> _captureScreenWithRetry({int maxRetries = 3}) async {
     for (int i = 0; i < maxRetries; i++) {
       try {
-        final path = await _screenCapture.captureScreen();
-        if (path != null) return path;
+        final bytes = await _screenCapture.captureScreen();
+        if (bytes != null) return bytes;
       } catch (e) {
         print('Screenshot capture attempt ${i + 1} failed: $e');
       }
@@ -427,36 +452,240 @@ class AgentController extends ChangeNotifier {
   /// Resolve element ID from the UI tree to (cx, cy) coordinates.
   /// Returns null if the element is not found.
   Map<String, double>? _resolveElementCoordinates(
-      int elementId, List<Map<String, dynamic>> uiElements) {
-    for (final element in uiElements) {
-      if (element['id'] == elementId) {
-        final bounds = element['bounds'] as Map<String, dynamic>?;
-        if (bounds != null) {
-          return {
-            'x': (bounds['cx'] as num).toDouble(),
-            'y': (bounds['cy'] as num).toDouble(),
-          };
-        }
+    int elementId,
+    List<Map<String, dynamic>> uiElements,
+  ) {
+    final element = _findElementById(elementId, uiElements);
+    if (element != null) {
+      final bounds = element['bounds'] as Map<String, dynamic>?;
+      if (bounds != null) {
+        return {
+          'x': (bounds['cx'] as num).toDouble(),
+          'y': (bounds['cy'] as num).toDouble(),
+        };
       }
     }
     return null;
   }
 
+  Map<String, dynamic>? _findElementById(
+    int elementId,
+    List<Map<String, dynamic>> uiElements,
+  ) {
+    for (final element in uiElements) {
+      if (element['id'] == elementId) {
+        return element;
+      }
+    }
+    return null;
+  }
+
+  Future<_UiSnapshot?> _fetchUiSnapshot() async {
+    try {
+      final uiTree = await _screenCapture.getUITree();
+      if (uiTree == null || uiTree.isEmpty) {
+        return null;
+      }
+
+      final parsed = jsonDecode(uiTree) as Map<String, dynamic>;
+      final elementsJson = parsed['elements'] as List<dynamic>? ?? const [];
+      final elements = elementsJson
+          .whereType<Map>()
+          .map((element) => Map<String, dynamic>.from(element))
+          .toList(growable: false);
+
+      final hasFocusedEditable = elements.any(
+        (element) => element['editable'] == true && element['focused'] == true,
+      );
+
+      return _UiSnapshot(
+        rawTree: uiTree,
+        packageName: parsed['package'] as String?,
+        elements: elements,
+        hasFocusedEditable: hasFocusedEditable,
+      );
+    } catch (e) {
+      return null;
+    }
+  }
+
+  bool _didPackageChange(_UiSnapshot? before, _UiSnapshot? after) {
+    if (before?.packageName == null || after?.packageName == null) {
+      return false;
+    }
+    return before!.packageName != after!.packageName;
+  }
+
+  bool _didTreeSignatureChange(_UiSnapshot? before, _UiSnapshot? after) {
+    final beforeSignature = before?.signature;
+    final afterSignature = after?.signature;
+    if (beforeSignature == null || afterSignature == null) {
+      return false;
+    }
+    return beforeSignature != afterSignature;
+  }
+
+  bool _tapTargetsEditableField(
+    AgentAction action,
+    _UiSnapshot? beforeSnapshot,
+  ) {
+    final elementId = action.params['element'] as num?;
+    if (elementId == null || beforeSnapshot == null) {
+      return false;
+    }
+
+    final element = _findElementById(
+      elementId.toInt(),
+      beforeSnapshot.elements,
+    );
+    if (element == null) {
+      return false;
+    }
+
+    return element['editable'] == true ||
+        element['focusable'] == true ||
+        (element['type']?.toString().contains('EditText') ?? false);
+  }
+
+  Duration _readinessTimeoutForAction(AgentAction action) {
+    switch (action.type) {
+      case 'open_app':
+        return _openAppReadyTimeout;
+      case 'tap':
+        return _tapReadyTimeout;
+      case 'type':
+        return _typeReadyTimeout;
+      case 'swipe':
+      case 'back':
+      case 'home':
+        return _navigationReadyTimeout;
+      case 'wait':
+        final ms = (action.params['ms'] as num?)?.toInt() ?? 1000;
+        return Duration(milliseconds: ms.clamp(0, 10000));
+      default:
+        return Duration.zero;
+    }
+  }
+
+  bool _isActionReady(
+    AgentAction action,
+    _UiSnapshot? beforeSnapshot,
+    _UiSnapshot? currentSnapshot,
+  ) {
+    if (currentSnapshot == null) {
+      return false;
+    }
+
+    if (beforeSnapshot == null) {
+      return true;
+    }
+
+    final packageChanged = _didPackageChange(beforeSnapshot, currentSnapshot);
+    final treeChanged = _didTreeSignatureChange(
+      beforeSnapshot,
+      currentSnapshot,
+    );
+
+    switch (action.type) {
+      case 'open_app':
+        final targetPackage = action.params['package'] as String?;
+        if (targetPackage != null &&
+            targetPackage.isNotEmpty &&
+            currentSnapshot.packageName == targetPackage) {
+          return true;
+        }
+        return packageChanged || treeChanged;
+      case 'tap':
+        final expectsFocusedInput = _tapTargetsEditableField(
+          action,
+          beforeSnapshot,
+        );
+        if (expectsFocusedInput && currentSnapshot.hasFocusedEditable) {
+          return true;
+        }
+        return packageChanged || treeChanged;
+      case 'type':
+      case 'swipe':
+      case 'back':
+      case 'home':
+      case 'wait':
+        return packageChanged || treeChanged;
+      default:
+        return true;
+    }
+  }
+
+  Future<_UiSnapshot?> _waitForActionReadiness(
+    AgentAction action,
+    _UiSnapshot? beforeSnapshot,
+  ) async {
+    final timeout = _readinessTimeoutForAction(action);
+    if (timeout == Duration.zero) {
+      return beforeSnapshot;
+    }
+
+    final canObserveUi = await _getAccessibilityEnabled();
+    if (!canObserveUi) {
+      return beforeSnapshot;
+    }
+
+    _UiSnapshot? latestSnapshot = beforeSnapshot;
+    var currentSnapshot = await _fetchUiSnapshot();
+    if (currentSnapshot != null) {
+      latestSnapshot = currentSnapshot;
+    }
+    if (_isActionReady(action, beforeSnapshot, currentSnapshot)) {
+      return currentSnapshot;
+    }
+
+    var uiChangeSequence = await _screenCapture.getUiChangeSequence();
+    final deadline = DateTime.now().add(timeout);
+
+    while (!_cancelRequested) {
+      final remaining = deadline.difference(DateTime.now());
+      if (remaining <= Duration.zero) {
+        break;
+      }
+
+      final observedUiChange = await _screenCapture.waitForUiChange(
+        sinceSequence: uiChangeSequence,
+        timeoutMs: remaining.inMilliseconds,
+      );
+      if (!observedUiChange) {
+        break;
+      }
+
+      uiChangeSequence = await _screenCapture.getUiChangeSequence();
+      currentSnapshot = await _fetchUiSnapshot();
+      if (currentSnapshot != null) {
+        latestSnapshot = currentSnapshot;
+      }
+
+      if (_isActionReady(action, beforeSnapshot, currentSnapshot)) {
+        return currentSnapshot;
+      }
+    }
+
+    return latestSnapshot;
+  }
+
   /// Execute a single agent action.
-  Future<void> _executeAction(
-      AgentAction action, List<Map<String, dynamic>> uiElements) async {
+  Future<_UiSnapshot?> _executeAction(
+    AgentAction action,
+    _UiSnapshot? beforeSnapshot,
+  ) async {
     // Actions that require the accessibility service
     const accessibilityActions = {'tap', 'type', 'swipe', 'back', 'home'};
 
     if (accessibilityActions.contains(action.type)) {
-      final hasAccessibility = await _screenCapture.isAccessibilityEnabled();
+      final hasAccessibility = await _ensureAccessibilityEnabled();
       if (!hasAccessibility) {
         _addConversation(
           '⚠️ Cannot execute "${action.type}" — accessibility service not enabled. '
           'Please enable it in Settings → Accessibility → Lucy.',
           false,
         );
-        return;
+        return beforeSnapshot;
       }
     }
 
@@ -469,8 +698,6 @@ class AgentController extends ChangeNotifier {
             if (!success) {
               print('Failed to open app: $package');
             }
-            // Wait for the app to fully launch and render its first frame
-            await Future.delayed(const Duration(milliseconds: 1200));
           }
           break;
 
@@ -479,14 +706,17 @@ class AgentController extends ChangeNotifier {
           // Prefer element-based tap (resolve coordinates from UI tree)
           final elementId = action.params['element'] as num?;
           if (elementId != null) {
-            final coords =
-                _resolveElementCoordinates(elementId.toInt(), uiElements);
+            final coords = _resolveElementCoordinates(
+              elementId.toInt(),
+              beforeSnapshot?.elements ?? const [],
+            );
             if (coords != null) {
               x = coords['x']!;
               y = coords['y']!;
             } else {
               print(
-                  'Element $elementId not found in UI tree, falling back to raw coordinates');
+                'Element $elementId not found in UI tree, falling back to raw coordinates',
+              );
               x = (action.params['x'] as num?)?.toDouble() ?? 0;
               y = (action.params['y'] as num?)?.toDouble() ?? 0;
             }
@@ -496,14 +726,12 @@ class AgentController extends ChangeNotifier {
             y = (action.params['y'] as num?)?.toDouble() ?? 0;
           }
           await _screenCapture.performTap(x, y);
-          await Future.delayed(const Duration(milliseconds: 200));
           break;
 
         case 'type':
           final text = action.params['text'] as String? ?? '';
           if (text.isNotEmpty) {
             await _screenCapture.performType(text);
-            await Future.delayed(const Duration(milliseconds: 100));
           }
           break;
 
@@ -513,22 +741,17 @@ class AgentController extends ChangeNotifier {
           final endX = (action.params['endX'] as num?)?.toDouble() ?? 0;
           final endY = (action.params['endY'] as num?)?.toDouble() ?? 0;
           await _screenCapture.performSwipe(startX, startY, endX, endY);
-          await Future.delayed(const Duration(milliseconds: 250));
           break;
 
         case 'back':
           await _screenCapture.pressBack();
-          await Future.delayed(const Duration(milliseconds: 200));
           break;
 
         case 'home':
           await _screenCapture.pressHome();
-          await Future.delayed(const Duration(milliseconds: 200));
           break;
 
         case 'wait':
-          final ms = (action.params['ms'] as num?)?.toInt() ?? 1000;
-          await Future.delayed(Duration(milliseconds: ms));
           break;
 
         default:
@@ -537,11 +760,13 @@ class AgentController extends ChangeNotifier {
     } catch (e) {
       print('Error executing action ${action.type}: $e');
     }
+
+    return _waitForActionReadiness(action, beforeSnapshot);
   }
 
   String _trimForTts(String text) {
-    // Remove thinking/emoji markers for cleaner TTS
-    String cleaned = text.replaceAll(RegExp(r'💭.*?\n'), '');
+    // Remove action/emoji markers for cleaner TTS
+    String cleaned = text;
     cleaned = cleaned.replaceAll(RegExp(r'⚡.*?\n'), '');
     cleaned = cleaned.trim();
     if (cleaned.length > 300) {
@@ -555,21 +780,37 @@ class AgentController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _addConversation(String text, bool isUser, {String? screenshotPath}) {
-    _conversation.add(ConversationEntry(
-      text: text,
-      isUser: isUser,
-      screenshotPath: screenshotPath,
-    ));
+  Future<bool> capturePreview() async {
+    final screenshotBytes = await _captureScreenWithRetry();
+    if (screenshotBytes == null) {
+      return false;
+    }
+
+    _lastScreenshotBytes = screenshotBytes;
+    notifyListeners();
+    return true;
+  }
+
+  void _addConversation(
+    String text,
+    bool isUser, {
+    Uint8List? screenshotBytes,
+  }) {
+    _conversation.add(
+      ConversationEntry(
+        text: text,
+        isUser: isUser,
+        screenshotBytes: screenshotBytes,
+      ),
+    );
     notifyListeners();
   }
 
   void clearConversation() {
     _conversation.clear();
-    _lastScreenshotPath = null;
+    _lastScreenshotBytes = null;
     _isAskingForFurtherHelp = false;
     _aiService.resetChat();
-    _screenCapture.clearScreenshots();
     notifyListeners();
   }
 

@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_tts/flutter_tts.dart';
 
@@ -45,9 +44,17 @@ class VoiceService {
       await _tts.setSpeechRate(0.5);
       await _tts.setVolume(1.0);
       await _tts.setPitch(1.0);
+      await _tts.awaitSpeakCompletion(true);
 
       _tts.setCompletionHandler(() {
         _isSpeaking = false;
+      });
+      _tts.setCancelHandler(() {
+        _isSpeaking = false;
+      });
+      _tts.setErrorHandler((message) {
+        _isSpeaking = false;
+        onError?.call('TTS error: $message');
       });
 
       return _isInitialized;
@@ -106,7 +113,11 @@ class VoiceService {
     }
 
     _isSpeaking = true;
-    await _tts.speak(text);
+    try {
+      await _tts.speak(text);
+    } finally {
+      _isSpeaking = false;
+    }
   }
 
   Future<void> stopSpeaking() async {

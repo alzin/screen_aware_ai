@@ -6,7 +6,7 @@ class ScreenCaptureManager {
   bool _hasPermission = false;
   bool get hasPermission => _hasPermission;
 
-  /// Callback fired when the native overlay stop button is tapped.
+  /// Callback fired when the native stop notification action is tapped.
   VoidCallback? onForceStop;
 
   bool _handlerRegistered = false;
@@ -34,18 +34,18 @@ class ScreenCaptureManager {
     }
   }
 
-  /// Capture the current screen and return the file path.
+  /// Capture the current screen and return compressed image bytes.
   /// Automatically handles reinitialization if the capture service
   /// lost its projection (e.g., after app switch or service restart).
-  Future<String?> captureScreen() async {
+  Future<Uint8List?> captureScreen() async {
     if (!_hasPermission) {
       final granted = await requestPermission();
       if (!granted) return null;
     }
 
     try {
-      final path = await _channel.invokeMethod<String>('captureScreen');
-      return path;
+      final bytes = await _channel.invokeMethod<Uint8List>('captureScreen');
+      return bytes;
     } on PlatformException catch (e) {
       if (e.code == 'NOT_INITIALIZED') {
         // Service exists but lost its MediaProjection — wait for
@@ -54,10 +54,11 @@ class ScreenCaptureManager {
         print('Screen capture not initialized, waiting and retrying...');
         await Future.delayed(const Duration(milliseconds: 800));
         try {
-          final path = await _channel.invokeMethod<String>('captureScreen');
-          return path;
+          final bytes = await _channel.invokeMethod<Uint8List>('captureScreen');
+          return bytes;
         } on PlatformException catch (retryError) {
-          if (retryError.code == 'NOT_INITIALIZED' || retryError.code == 'NO_SERVICE') {
+          if (retryError.code == 'NOT_INITIALIZED' ||
+              retryError.code == 'NO_SERVICE') {
             // Reinitialization failed — need fresh permission grant
             print('Reinitialization failed, re-requesting permission...');
             _hasPermission = false;
@@ -65,8 +66,10 @@ class ScreenCaptureManager {
             if (!granted) return null;
             // Final attempt after fresh permission
             try {
-              final path = await _channel.invokeMethod<String>('captureScreen');
-              return path;
+              final bytes = await _channel.invokeMethod<Uint8List>(
+                'captureScreen',
+              );
+              return bytes;
             } catch (finalError) {
               print('Final capture attempt failed: $finalError');
               return null;
@@ -82,8 +85,8 @@ class ScreenCaptureManager {
         final granted = await requestPermission();
         if (!granted) return null;
         try {
-          final path = await _channel.invokeMethod<String>('captureScreen');
-          return path;
+          final bytes = await _channel.invokeMethod<Uint8List>('captureScreen');
+          return bytes;
         } catch (retryError) {
           print('Capture after permission re-request failed: $retryError');
           return null;
@@ -112,7 +115,37 @@ class ScreenCaptureManager {
   /// Check if accessibility service is enabled
   Future<bool> isAccessibilityEnabled() async {
     try {
-      final result = await _channel.invokeMethod<bool>('isAccessibilityEnabled');
+      final result = await _channel.invokeMethod<bool>(
+        'isAccessibilityEnabled',
+      );
+      return result ?? false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// Returns a monotonically increasing sequence that advances on native
+  /// accessibility/UI change events.
+  Future<int> getUiChangeSequence() async {
+    try {
+      final result = await _channel.invokeMethod<int>('getUiChangeSequence');
+      return result ?? 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  /// Wait until the native accessibility service observes a UI change after
+  /// [sinceSequence], or until [timeoutMs] elapses.
+  Future<bool> waitForUiChange({
+    required int sinceSequence,
+    required int timeoutMs,
+  }) async {
+    try {
+      final result = await _channel.invokeMethod<bool>('waitForUiChange', {
+        'sinceSequence': sinceSequence,
+        'timeoutMs': timeoutMs,
+      });
       return result ?? false;
     } catch (e) {
       return false;
@@ -169,7 +202,12 @@ class ScreenCaptureManager {
   }
 
   /// Perform a swipe gesture
-  Future<bool> performSwipe(double startX, double startY, double endX, double endY) async {
+  Future<bool> performSwipe(
+    double startX,
+    double startY,
+    double endX,
+    double endY,
+  ) async {
     try {
       final result = await _channel.invokeMethod<bool>('performSwipe', {
         'startX': startX,
@@ -223,55 +261,26 @@ class ScreenCaptureManager {
     }
   }
 
-  /// Delete all saved screenshots
-  Future<void> clearScreenshots() async {
-    try {
-      await _channel.invokeMethod('clearScreenshots');
-    } catch (e) {
-      print('Error clearing screenshots: $e');
-    }
-  }
+  // ─── Stop controls ──────────────────────────────────────────────────
 
-  // ─── Overlay stop button ────────────────────────────────────────────
-
-  /// Check if the app has overlay (draw-over-other-apps) permission.
-  Future<bool> hasOverlayPermission() async {
-    try {
-      final result = await _channel.invokeMethod<bool>('hasOverlayPermission');
-      return result ?? false;
-    } catch (e) {
-      print('Error checking overlay permission: $e');
-      return false;
-    }
-  }
-
-  /// Open the system settings page for overlay permission.
-  Future<void> requestOverlayPermission() async {
-    try {
-      await _channel.invokeMethod('requestOverlayPermission');
-    } catch (e) {
-      print('Error requesting overlay permission: $e');
-    }
-  }
-
-  /// Show the floating stop button overlay on top of all apps.
+  /// Show the persistent stop notification while Lucy is active.
   Future<bool> showStopOverlay() async {
     _ensureHandler();
     try {
       final result = await _channel.invokeMethod<bool>('showStopOverlay');
       return result ?? false;
     } catch (e) {
-      print('Error showing stop overlay: $e');
+      print('Error showing stop controls: $e');
       return false;
     }
   }
 
-  /// Hide the floating stop button overlay.
+  /// Hide the persistent stop notification.
   Future<void> hideStopOverlay() async {
     try {
       await _channel.invokeMethod('hideStopOverlay');
     } catch (e) {
-      print('Error hiding stop overlay: $e');
+      print('Error hiding stop controls: $e');
     }
   }
 }

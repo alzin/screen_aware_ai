@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/agent_controller.dart';
@@ -12,7 +11,8 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, WidgetsBindingObserver {
+class _HomeScreenState extends State<HomeScreen>
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
   final ScrollController _scrollController = ScrollController();
@@ -25,7 +25,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    
+
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
@@ -36,7 +36,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
 
     widget.controller.addListener(_onControllerUpdate);
     _loadApiKey();
-    
+
     _checkAccessibility();
   }
 
@@ -51,9 +51,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     if (mounted && !_isCheckingAccessibility) {
       setState(() => _isCheckingAccessibility = true);
     }
-    
-    final isEnabled = await widget.controller.screenCapture.isAccessibilityEnabled();
-    
+
+    final isEnabled = await widget.controller.screenCapture
+        .isAccessibilityEnabled();
+
     if (mounted) {
       setState(() {
         _isAccessibilityEnabled = isEnabled;
@@ -162,11 +163,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                 ),
                 const SizedBox(height: 32),
                 FilledButton.icon(
-                  onPressed: () => widget.controller.screenCapture.openAccessibilitySettings(),
+                  onPressed: () => widget.controller.screenCapture
+                      .openAccessibilitySettings(),
                   icon: const Icon(Icons.settings),
                   label: const Text('Open Settings'),
                   style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 32,
+                      vertical: 16,
+                    ),
                   ),
                 ),
               ],
@@ -195,7 +200,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                           color: Colors.greenAccent.withOpacity(0.5),
                           blurRadius: 8,
                           spreadRadius: 2,
-                        )
+                        ),
                       ]
                     : null,
               ),
@@ -252,9 +257,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
         color: statusColor.withOpacity(0.1),
-        border: Border(
-          bottom: BorderSide(color: statusColor.withOpacity(0.3)),
-        ),
+        border: Border(bottom: BorderSide(color: statusColor.withOpacity(0.3))),
       ),
       child: Row(
         children: [
@@ -274,7 +277,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             TextButton.icon(
               onPressed: () => _showApiKeyDialog(context),
               icon: Icon(Icons.warning_amber, size: 16, color: Colors.amber),
-              label: Text('Set API Key', style: TextStyle(color: Colors.amber, fontSize: 12)),
+              label: Text(
+                'Set API Key',
+                style: TextStyle(color: Colors.amber, fontSize: 12),
+              ),
             ),
         ],
       ),
@@ -311,7 +317,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     );
   }
 
-  Widget _buildConversationBubble(ConversationEntry entry, ColorScheme colorScheme) {
+  Widget _buildConversationBubble(
+    ConversationEntry entry,
+    ColorScheme colorScheme,
+  ) {
     final isUser = entry.isUser;
 
     return Align(
@@ -329,8 +338,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(16),
             topRight: const Radius.circular(16),
-            bottomLeft: isUser ? const Radius.circular(16) : const Radius.circular(4),
-            bottomRight: isUser ? const Radius.circular(4) : const Radius.circular(16),
+            bottomLeft: isUser
+                ? const Radius.circular(16)
+                : const Radius.circular(4),
+            bottomRight: isUser
+                ? const Radius.circular(4)
+                : const Radius.circular(16),
           ),
           border: Border.all(
             color: isUser
@@ -370,14 +383,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             ),
             const SizedBox(height: 6),
             // Screenshot preview
-            if (entry.screenshotPath != null) ...[
+            if (entry.screenshotBytes != null) ...[
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: Image.file(
-                  File(entry.screenshotPath!),
+                child: Image.memory(
+                  entry.screenshotBytes!,
                   height: 120,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
+                  errorBuilder: (_, error, stackTrace) => Container(
                     height: 60,
                     color: Colors.grey[800],
                     child: const Center(
@@ -488,10 +501,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: (widget.controller.isActive
-                                ? Colors.redAccent
-                                : colorScheme.primary)
-                            .withOpacity(0.4),
+                        color:
+                            (widget.controller.isActive
+                                    ? Colors.redAccent
+                                    : colorScheme.primary)
+                                .withOpacity(0.4),
                         blurRadius: 16,
                         spreadRadius: 2,
                       ),
@@ -510,7 +524,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             Expanded(
               child: Align(
                 alignment: Alignment.centerRight,
-                child: widget.controller.lastScreenshotPath != null
+                child: widget.controller.lastScreenshotBytes != null
                     ? GestureDetector(
                         onTap: () => _showScreenshotPreview(context),
                         child: Container(
@@ -518,14 +532,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                           height: 40,
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: colorScheme.outline.withOpacity(0.3)),
+                            border: Border.all(
+                              color: colorScheme.outline.withOpacity(0.3),
+                            ),
                           ),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(7),
-                            child: Image.file(
-                              File(widget.controller.lastScreenshotPath!),
+                            child: Image.memory(
+                              widget.controller.lastScreenshotBytes!,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => const Icon(Icons.image, size: 20),
+                              errorBuilder: (_, error, stackTrace) =>
+                                  const Icon(Icons.image, size: 20),
                             ),
                           ),
                         ),
@@ -622,17 +639,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   }
 
   Future<void> _manualCapture() async {
-    final path = await widget.controller.screenCapture.captureScreen();
-    if (path != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Screenshot saved: ${path.split('/').last}')),
-      );
+    final captured = await widget.controller.capturePreview();
+    if (captured && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Screenshot captured')));
     }
   }
 
   void _showScreenshotPreview(BuildContext context) {
-    final path = widget.controller.lastScreenshotPath;
-    if (path == null) return;
+    final bytes = widget.controller.lastScreenshotBytes;
+    if (bytes == null) return;
 
     showDialog(
       context: context,
@@ -650,10 +667,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                 ),
               ],
             ),
-            Image.file(
-              File(path),
+            Image.memory(
+              bytes,
               fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => const Padding(
+              errorBuilder: (_, error, stackTrace) => const Padding(
                 padding: EdgeInsets.all(32),
                 child: Text('Could not load screenshot'),
               ),

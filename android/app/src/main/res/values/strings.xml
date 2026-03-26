@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="accessibility_service_description">Lucy uses this service to perform actions on your screen, such as tapping buttons and typing text, based on your voice commands.</string>
+    <string name="stop_notification_channel_name">Lucy Stop Controls</string>
+    <string name="stop_notification_channel_description">Swipe down and tap Stop Lucy to cancel Lucy while it is controlling other apps.</string>
+    <string name="stop_notification_title">Lucy is active</string>
+    <string name="stop_notification_text">Open notifications and tap Stop Lucy to cancel the current task.</string>
+    <string name="stop_notification_action">Stop Lucy</string>
 </resources>

@@ -17,14 +17,16 @@ import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.IBinder
 import android.os.Looper
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.WindowManager
-import java.io.File
-import java.io.FileOutputStream
+import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.max
+import kotlin.math.roundToInt
 
 class ScreenCaptureService : Service() {
 
@@ -35,6 +37,32 @@ class ScreenCaptureService : Service() {
         private const val NOTIFICATION_ID = 1
         // Use a sentinel that does NOT collide with Activity.RESULT_OK (-1)
         private const val RESULT_CODE_DEFAULT = 0
+        private const val MAX_UPLOAD_DIMENSION = 1280
+        private const val JPEG_QUALITY = 72
+        private val initializationListeners = mutableSetOf<(Boolean) -> Unit>()
+
+        @Synchronized
+        fun addInitializationListener(listener: (Boolean) -> Unit) {
+            val service = instance
+            if (service?.isInitialized == true) {
+                listener(true)
+                return
+            }
+            initializationListeners.add(listener)
+        }
+
+        @Synchronized
+        fun removeInitializationListener(listener: (Boolean) -> Unit) {
+            initializationListeners.remove(listener)
+        }
+
+        @Synchronized
+        fun notifyInitializationListeners(success: Boolean) {
+            if (initializationListeners.isEmpty()) return
+            val listeners = initializationListeners.toList()
+            initializationListeners.clear()
+            listeners.forEach { it(success) }
+        }
     }
 
     private var mediaProjection: MediaProjection? = null
@@ -43,6 +71,8 @@ class ScreenCaptureService : Service() {
     private var projectionCallback: MediaProjection.Callback? = null
     // Generation counter to guard against stale callbacks
     private var projectionGeneration = 0L
+    private var captureThread: HandlerThread? = null
+    private var captureHandler: Handler? = null
     var screenWidth = 0
         private set
     var screenHeight = 0
@@ -56,6 +86,8 @@ class ScreenCaptureService : Service() {
         super.onCreate()
         instance = this
         createNotificationChannel()
+        captureThread = HandlerThread("ScreenCaptureWorker").apply { start() }
+        captureHandler = Handler(captureThread!!.looper)
         getScreenMetrics()
         Log.d(TAG, "onCreate: service created, screenWidth=$screenWidth, screenHeight=$screenHeight")
     }
@@ -79,12 +111,13 @@ class ScreenCaptureService : Service() {
             initializeProjection(resultCode, data)
         } else {
             Log.w(TAG, "onStartCommand: missing or invalid projection data (resultCode=$resultCode), service will not capture")
+            notifyInitializationListeners(false)
         }
 
         return START_NOT_STICKY
     }
 
-    fun initializeProjection(resultCode: Int, data: Intent) {
+    fun initializeProjection(resultCode: Int, data: Intent): Boolean {
         Log.d(TAG, "initializeProjection: setting up with resultCode=$resultCode")
 
         // IMPORTANT: Unregister the old callback BEFORE stopping the old projection.
@@ -119,7 +152,8 @@ class ScreenCaptureService : Service() {
 
             if (mediaProjection == null) {
                 Log.e(TAG, "initializeProjection: getMediaProjection returned null")
-                return
+                notifyInitializationListeners(false)
+                return false
             }
 
             // Android 14+ requires registering a callback BEFORE createVirtualDisplay
@@ -143,10 +177,14 @@ class ScreenCaptureService : Service() {
                 mediaProjection!!.registerCallback(callback, Handler(Looper.getMainLooper()))
             }
 
-            setupVirtualDisplay()
-            Log.d(TAG, "initializeProjection: success, imageReader=${imageReader != null}")
+            val initialized = setupVirtualDisplay()
+            Log.d(TAG, "initializeProjection: success=$initialized, imageReader=${imageReader != null}")
+            notifyInitializationListeners(initialized)
+            return initialized
         } catch (e: Exception) {
             Log.e(TAG, "initializeProjection: failed", e)
+            notifyInitializationListeners(false)
+            return false
         }
     }
 
@@ -160,7 +198,7 @@ class ScreenCaptureService : Service() {
         screenDensity = metrics.densityDpi
     }
 
-    private fun setupVirtualDisplay() {
+    private fun setupVirtualDisplay(): Boolean {
         imageReader = ImageReader.newInstance(screenWidth, screenHeight, PixelFormat.RGBA_8888, 2)
         virtualDisplay = mediaProjection?.createVirtualDisplay(
             "ScreenCapture",
@@ -169,9 +207,10 @@ class ScreenCaptureService : Service() {
             imageReader!!.surface, null, null
         )
         Log.d(TAG, "setupVirtualDisplay: virtualDisplay=${virtualDisplay != null}")
+        return virtualDisplay != null && imageReader != null
     }
 
-    fun captureScreen(context: Context, callback: (String?) -> Unit) {
+    fun captureScreen(callback: (ByteArray?) -> Unit) {
         val reader = imageReader
         if (reader == null) {
             Log.w(TAG, "captureScreen: imageReader is null, not initialized")
@@ -179,57 +218,63 @@ class ScreenCaptureService : Service() {
             return
         }
 
-        // Strategy 1: Try to acquire the latest available frame directly.
-        // This is the fastest path and avoids timeouts when the display
-        // hasn't produced a new frame (e.g., static screen content).
-        // The frame in the buffer IS the current screen — no need to drain and wait.
-        try {
-            val image = reader.acquireLatestImage()
-            if (image != null) {
-                val path = saveImageToFile(context, image)
-                callback(path)
-                return
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "captureScreen: direct acquire failed: ${e.message}")
+        val workerHandler = captureHandler
+        if (workerHandler == null) {
+            Log.w(TAG, "captureScreen: capture handler is null")
+            callback(null)
+            return
         }
 
-        // Strategy 2: No image available yet — wait for the next frame
-        // from the VirtualDisplay (e.g., right after initialization).
-        Log.d(TAG, "captureScreen: no image in buffer, waiting for next frame")
-        val handler = Handler(Looper.getMainLooper())
-        val done = AtomicBoolean(false)
+        workerHandler.post {
+            // Strategy 1: Try to acquire the latest available frame directly.
+            // This is the fastest path and avoids timeouts when the display
+            // hasn't produced a new frame (e.g., static screen content).
+            // The frame in the buffer IS the current screen — no need to drain and wait.
+            try {
+                val image = reader.acquireLatestImage()
+                if (image != null) {
+                    callback(encodeImageForUpload(image))
+                    return@post
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "captureScreen: direct acquire failed: ${e.message}")
+            }
 
-        reader.setOnImageAvailableListener({ ir ->
-            if (done.compareAndSet(false, true)) {
-                ir.setOnImageAvailableListener(null, null)
-                try {
-                    val image = ir.acquireLatestImage()
-                    if (image != null) {
-                        val path = saveImageToFile(context, image)
-                        callback(path)
-                    } else {
-                        Log.w(TAG, "captureScreen: acquireLatestImage returned null in listener")
+            // Strategy 2: No image available yet — wait for the next frame
+            // from the VirtualDisplay (e.g., right after initialization).
+            Log.d(TAG, "captureScreen: no image in buffer, waiting for next frame")
+            val done = AtomicBoolean(false)
+
+            reader.setOnImageAvailableListener({ ir ->
+                if (done.compareAndSet(false, true)) {
+                    ir.setOnImageAvailableListener(null, null)
+                    try {
+                        val image = ir.acquireLatestImage()
+                        if (image != null) {
+                            callback(encodeImageForUpload(image))
+                        } else {
+                            Log.w(TAG, "captureScreen: acquireLatestImage returned null in listener")
+                            callback(null)
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "captureScreen: error in listener", e)
                         callback(null)
                     }
-                } catch (e: Exception) {
-                    Log.e(TAG, "captureScreen: error in listener", e)
+                }
+            }, workerHandler)
+
+            // Timeout: 1.5 seconds (reduced from 3s since this is only the fallback path)
+            workerHandler.postDelayed({
+                if (done.compareAndSet(false, true)) {
+                    reader.setOnImageAvailableListener(null, null)
+                    Log.w(TAG, "captureScreen: timed out waiting for frame (1.5s)")
                     callback(null)
                 }
-            }
-        }, handler)
-
-        // Timeout: 1.5 seconds (reduced from 3s since this is only the fallback path)
-        handler.postDelayed({
-            if (done.compareAndSet(false, true)) {
-                reader.setOnImageAvailableListener(null, null)
-                Log.w(TAG, "captureScreen: timed out waiting for frame (1.5s)")
-                callback(null)
-            }
-        }, 1500)
+            }, 1500)
+        }
     }
 
-    private fun saveImageToFile(context: Context, image: Image): String? {
+    private fun encodeImageForUpload(image: Image): ByteArray? {
         try {
             val planes = image.planes
             val buffer = planes[0].buffer
@@ -243,64 +288,46 @@ class ScreenCaptureService : Service() {
                 Bitmap.Config.ARGB_8888
             )
             bitmap.copyPixelsFromBuffer(buffer)
-            image.close()
+            image.closeSafely()
 
             val croppedBitmap = Bitmap.createBitmap(bitmap, 0, 0, screenWidth, screenHeight)
             if (croppedBitmap != bitmap) bitmap.recycle()
 
-            // Use persistent filesDir instead of cacheDir to prevent system purging
-            val screenshotsDir = File(context.filesDir, "screenshots")
-            if (!screenshotsDir.exists()) {
-                screenshotsDir.mkdirs()
+            val uploadBitmap = downscaleBitmap(croppedBitmap)
+            if (uploadBitmap != croppedBitmap) {
+                croppedBitmap.recycle()
             }
 
-            // Cleanup old screenshots before saving new one
-            cleanupOldScreenshots(screenshotsDir, maxCount = 50)
+            val output = ByteArrayOutputStream()
+            uploadBitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, output)
+            uploadBitmap.recycle()
 
-            val file = File(screenshotsDir, "screenshot_${System.currentTimeMillis()}.png")
-            FileOutputStream(file).use { out ->
-                croppedBitmap.compress(Bitmap.CompressFormat.PNG, 85, out)
-            }
-            croppedBitmap.recycle()
-
-            Log.d(TAG, "captureScreen: saved to ${file.absolutePath}")
-            return file.absolutePath
+            val encodedBytes = output.toByteArray()
+            Log.d(TAG, "captureScreen: encoded ${encodedBytes.size} JPEG bytes")
+            return encodedBytes
         } catch (e: Exception) {
-            Log.e(TAG, "saveImageToFile: error", e)
-            image.close()
+            Log.e(TAG, "encodeImageForUpload: error", e)
+            image.closeSafely()
             return null
         }
     }
 
-    private fun cleanupOldScreenshots(dir: File, maxCount: Int) {
-        try {
-            val files = dir.listFiles { file -> file.isFile && file.name.startsWith("screenshot_") }
-            if (files != null && files.size >= maxCount) {
-                // Sort by last modified ascending (oldest first)
-                files.sortBy { it.lastModified() }
-                
-                // Delete oldest files until we are below the limit
-                val numToDelete = files.size - maxCount + 1
-                for (i in 0 until numToDelete) {
-                    if (files[i].delete()) {
-                        Log.d(TAG, "cleanupOldScreenshots: deleted old screenshot ${files[i].name}")
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "cleanupOldScreenshots: failed", e)
+    private fun downscaleBitmap(source: Bitmap): Bitmap {
+        val longestSide = max(source.width, source.height)
+        if (longestSide <= MAX_UPLOAD_DIMENSION) {
+            return source
         }
+
+        val scale = MAX_UPLOAD_DIMENSION.toFloat() / longestSide.toFloat()
+        val targetWidth = (source.width * scale).roundToInt().coerceAtLeast(1)
+        val targetHeight = (source.height * scale).roundToInt().coerceAtLeast(1)
+        return Bitmap.createScaledBitmap(source, targetWidth, targetHeight, true)
     }
 
-    fun clearScreenshots(context: Context) {
+    private fun Image.closeSafely() {
         try {
-            val screenshotsDir = File(context.filesDir, "screenshots")
-            if (screenshotsDir.exists()) {
-                val deleted = screenshotsDir.listFiles()?.map { it.delete() }?.all { it } ?: true
-                Log.d(TAG, "clearScreenshots: deleted all screenshots: $deleted")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "clearScreenshots: failed", e)
+            close()
+        } catch (_: Exception) {
         }
     }
 
@@ -327,6 +354,10 @@ class ScreenCaptureService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         Log.d(TAG, "onDestroy: cleaning up")
+        captureHandler?.removeCallbacksAndMessages(null)
+        captureHandler = null
+        captureThread?.quitSafely()
+        captureThread = null
         // Unregister callback before stopping to prevent it from running during cleanup
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             projectionCallback?.let { cb ->
