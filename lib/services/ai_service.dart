@@ -18,12 +18,14 @@ class AgentResponse {
   final List<AgentAction> actions;
   final String speak;
   final bool done;
+  final String lang; // BCP-47-ish short code: "en", "ja". Empty if unknown.
   final String rawResponse;
 
   AgentResponse({
     required this.actions,
     required this.speak,
     required this.done,
+    required this.lang,
     required this.rawResponse,
   });
 
@@ -41,6 +43,7 @@ class AgentResponse {
       actions: actionsList,
       speak: json['speak'] as String? ?? '',
       done: json['done'] as bool? ?? true,
+      lang: (json['lang'] as String? ?? '').toLowerCase(),
       rawResponse: raw,
     );
   }
@@ -50,6 +53,7 @@ class AgentResponse {
       actions: [],
       speak: raw.length > 300 ? '${raw.substring(0, 297)}...' : raw,
       done: true,
+      lang: '',
       rawResponse: raw,
     );
   }
@@ -121,13 +125,21 @@ CRITICAL RULES:
 8. When asked to read/describe screen content, read it from the screenshot and UI tree, speak it, and set "done": true.
 9. Use the UI tree "package" field to confirm which app is in the foreground.
 
+LANGUAGE RULES:
+- Detect the language of the user's most recent command.
+- The "speak" field MUST be written in that same language. If the user speaks Japanese, reply in natural Japanese. If the user speaks English, reply in English.
+- Also return a "lang" field with the BCP-47 short code of the language you used for "speak": "en" for English, "ja" for Japanese. If "speak" is empty, still return the language of the user's most recent command.
+- Keep this language consistent across the whole task until the user switches language.
+- Action JSON keys/values (type, package, text) stay as-is — only "speak" is localized. When typing into an input field, the "text" value should match what the user asked to type (in whichever language they used).
+
 RESPONSE FORMAT (strict JSON, one action only):
 {
   "actions": [
     {"type": "open_app", "package": "com.whatsapp"}
   ],
   "speak": "",
-  "done": false
+  "done": false,
+  "lang": "en"
 }
 ''';
 

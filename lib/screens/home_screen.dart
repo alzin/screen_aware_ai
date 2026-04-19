@@ -212,6 +212,7 @@ class _HomeScreenState extends State<HomeScreen>
         backgroundColor: colorScheme.surface,
         elevation: 0,
         actions: [
+          _buildLanguageToggle(),
           IconButton(
             icon: const Icon(Icons.key),
             tooltip: 'API Key',
@@ -592,6 +593,33 @@ class _HomeScreenState extends State<HomeScreen>
       case AgentState.executingAction:
         return Colors.cyan;
     }
+  }
+
+  Widget _buildLanguageToggle() {
+    final current = widget.controller.currentLang;
+    return PopupMenuButton<String>(
+      tooltip: 'Input / reply language',
+      initialValue: current,
+      onSelected: (lang) => widget.controller.setLanguage(lang),
+      itemBuilder: (_) => const [
+        PopupMenuItem(value: 'en', child: Text('English')),
+        PopupMenuItem(value: 'ja', child: Text('日本語')),
+      ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.language, size: 18),
+            const SizedBox(width: 4),
+            Text(
+              current == 'ja' ? 'JA' : 'EN',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showApiKeyDialog(BuildContext context) {
