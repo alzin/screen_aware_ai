@@ -5,8 +5,6 @@ import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.graphics.Rect
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -23,17 +21,6 @@ class ScreenActionService : AccessibilityService() {
         private const val TAG = "ScreenActionService"
     }
 
-    private data class UiChangeWaiter(
-        val sinceSequence: Long,
-        val callback: (Boolean) -> Unit,
-        val timeoutRunnable: Runnable
-    )
-
-    private val uiChangeHandler = Handler(Looper.getMainLooper())
-    private val uiChangeLock = Any()
-    private val uiChangeWaiters = mutableListOf<UiChangeWaiter>()
-    private var uiChangeSequence = 0L
-
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
@@ -41,77 +28,11 @@ class ScreenActionService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event == null) return
-        notifyUiChanged()
+        // We don't need to process events for this PoC
     }
 
     override fun onInterrupt() {
         // Required override
-    }
-
-    fun getUiChangeSequence(): Long = synchronized(uiChangeLock) {
-        uiChangeSequence
-    }
-
-    fun waitForUiChange(
-        sinceSequence: Long,
-        timeoutMs: Long,
-        callback: (Boolean) -> Unit
-    ) {
-        synchronized(uiChangeLock) {
-            if (uiChangeSequence > sinceSequence) {
-                callback(true)
-                return
-            }
-        }
-
-        lateinit var waiter: UiChangeWaiter
-        val timeoutRunnable = Runnable {
-            val shouldCallback = synchronized(uiChangeLock) {
-                uiChangeWaiters.remove(waiter)
-            }
-            if (shouldCallback) {
-                callback(false)
-            }
-        }
-        waiter = UiChangeWaiter(
-            sinceSequence = sinceSequence,
-            callback = callback,
-            timeoutRunnable = timeoutRunnable
-        )
-
-        val shouldCallbackImmediately = synchronized(uiChangeLock) {
-            if (uiChangeSequence > sinceSequence) {
-                true
-            } else {
-                uiChangeWaiters.add(waiter)
-                false
-            }
-        }
-
-        if (shouldCallbackImmediately) {
-            callback(true)
-            return
-        }
-
-        uiChangeHandler.postDelayed(timeoutRunnable, timeoutMs.coerceAtLeast(0L))
-    }
-
-    private fun notifyUiChanged() {
-        val readyWaiters: List<UiChangeWaiter>
-        synchronized(uiChangeLock) {
-            uiChangeSequence += 1
-            if (uiChangeWaiters.isEmpty()) {
-                return
-            }
-            readyWaiters = uiChangeWaiters.filter { uiChangeSequence > it.sinceSequence }
-            uiChangeWaiters.removeAll(readyWaiters)
-        }
-
-        readyWaiters.forEach { waiter ->
-            uiChangeHandler.removeCallbacks(waiter.timeoutRunnable)
-            waiter.callback(true)
-        }
     }
 
     /**
@@ -377,15 +298,6 @@ class ScreenActionService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
-        val pendingWaiters = synchronized(uiChangeLock) {
-            val waiters = uiChangeWaiters.toList()
-            uiChangeWaiters.clear()
-            waiters
-        }
-        pendingWaiters.forEach { waiter ->
-            uiChangeHandler.removeCallbacks(waiter.timeoutRunnable)
-            waiter.callback(false)
-        }
         instance = null
     }
 }

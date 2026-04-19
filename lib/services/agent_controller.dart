@@ -73,6 +73,7 @@ class AgentController extends ChangeNotifier {
   static const int _maxListenRetries = 3;
 
   static const int _maxStepsPerCommand = 10;
+  static const Duration _uiPollInterval = Duration(milliseconds: 120);
   static const Duration _tapReadyTimeout = Duration(milliseconds: 900);
   static const Duration _typeReadyTimeout = Duration(milliseconds: 900);
   static const Duration _navigationReadyTimeout = Duration(milliseconds: 1200);
@@ -81,32 +82,12 @@ class AgentController extends ChangeNotifier {
   bool _cancelRequested = false;
 
   bool _isAskingForFurtherHelp = false;
-  bool? _cachedAccessibilityEnabled;
 
   AiService get aiService => _aiService;
   ScreenCaptureManager get screenCapture => _screenCapture;
 
   /// Whether a cancel has been requested by the user.
   bool get cancelRequested => _cancelRequested;
-
-  Future<bool> _getAccessibilityEnabled({bool forceRefresh = false}) async {
-    if (!forceRefresh && _cachedAccessibilityEnabled != null) {
-      return _cachedAccessibilityEnabled!;
-    }
-
-    final isEnabled = await _screenCapture.isAccessibilityEnabled();
-    _cachedAccessibilityEnabled = isEnabled;
-    return isEnabled;
-  }
-
-  Future<bool> _ensureAccessibilityEnabled() async {
-    final isEnabled = await _getAccessibilityEnabled();
-    if (isEnabled) {
-      return true;
-    }
-
-    return _getAccessibilityEnabled(forceRefresh: true);
-  }
 
   /// Force-stop the current agent loop immediately.
   void requestCancel() {
@@ -213,7 +194,7 @@ class AgentController extends ChangeNotifier {
     }
 
     // Check if accessibility service is enabled
-    final hasAccessibility = await _getAccessibilityEnabled(forceRefresh: true);
+    final hasAccessibility = await _screenCapture.isAccessibilityEnabled();
     if (!hasAccessibility) {
       _addConversation(
         '⚠️ Accessibility service not enabled. I can see the screen but cannot perform actions (tap, type, swipe). '
@@ -275,6 +256,11 @@ class AgentController extends ChangeNotifier {
         _setState(AgentState.speaking);
         _addConversation('Alright, stopping the agent.', false);
         await _voiceService.speak('Alright, stopping the agent.');
+
+        await Future.delayed(const Duration(milliseconds: 500));
+        while (_voiceService.isSpeaking) {
+          await Future.delayed(const Duration(milliseconds: 200));
+        }
 
         await stopAgent();
         return;
@@ -393,6 +379,12 @@ class AgentController extends ChangeNotifier {
 
         final ttsText = _trimForTts(speakText);
         await _voiceService.speak(ttsText);
+
+        // Wait for TTS to finish
+        await Future.delayed(const Duration(milliseconds: 500));
+        while (_voiceService.isSpeaking && !_cancelRequested) {
+          await Future.delayed(const Duration(milliseconds: 200));
+        }
       }
 
       if (_cancelRequested) break;
@@ -624,39 +616,16 @@ class AgentController extends ChangeNotifier {
       return beforeSnapshot;
     }
 
-    final canObserveUi = await _getAccessibilityEnabled();
+    final canObserveUi = await _screenCapture.isAccessibilityEnabled();
     if (!canObserveUi) {
       return beforeSnapshot;
     }
 
     _UiSnapshot? latestSnapshot = beforeSnapshot;
-    var currentSnapshot = await _fetchUiSnapshot();
-    if (currentSnapshot != null) {
-      latestSnapshot = currentSnapshot;
-    }
-    if (_isActionReady(action, beforeSnapshot, currentSnapshot)) {
-      return currentSnapshot;
-    }
-
-    var uiChangeSequence = await _screenCapture.getUiChangeSequence();
     final deadline = DateTime.now().add(timeout);
 
     while (!_cancelRequested) {
-      final remaining = deadline.difference(DateTime.now());
-      if (remaining <= Duration.zero) {
-        break;
-      }
-
-      final observedUiChange = await _screenCapture.waitForUiChange(
-        sinceSequence: uiChangeSequence,
-        timeoutMs: remaining.inMilliseconds,
-      );
-      if (!observedUiChange) {
-        break;
-      }
-
-      uiChangeSequence = await _screenCapture.getUiChangeSequence();
-      currentSnapshot = await _fetchUiSnapshot();
+      final currentSnapshot = await _fetchUiSnapshot();
       if (currentSnapshot != null) {
         latestSnapshot = currentSnapshot;
       }
@@ -664,6 +633,15 @@ class AgentController extends ChangeNotifier {
       if (_isActionReady(action, beforeSnapshot, currentSnapshot)) {
         return currentSnapshot;
       }
+
+      final remaining = deadline.difference(DateTime.now());
+      if (remaining <= Duration.zero) {
+        break;
+      }
+
+      await Future.delayed(
+        remaining < _uiPollInterval ? remaining : _uiPollInterval,
+      );
     }
 
     return latestSnapshot;
@@ -678,7 +656,7 @@ class AgentController extends ChangeNotifier {
     const accessibilityActions = {'tap', 'type', 'swipe', 'back', 'home'};
 
     if (accessibilityActions.contains(action.type)) {
-      final hasAccessibility = await _ensureAccessibilityEnabled();
+      final hasAccessibility = await _screenCapture.isAccessibilityEnabled();
       if (!hasAccessibility) {
         _addConversation(
           '⚠️ Cannot execute "${action.type}" — accessibility service not enabled. '

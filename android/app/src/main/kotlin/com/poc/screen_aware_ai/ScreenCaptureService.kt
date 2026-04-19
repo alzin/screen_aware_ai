@@ -39,30 +39,6 @@ class ScreenCaptureService : Service() {
         private const val RESULT_CODE_DEFAULT = 0
         private const val MAX_UPLOAD_DIMENSION = 1280
         private const val JPEG_QUALITY = 72
-        private val initializationListeners = mutableSetOf<(Boolean) -> Unit>()
-
-        @Synchronized
-        fun addInitializationListener(listener: (Boolean) -> Unit) {
-            val service = instance
-            if (service?.isInitialized == true) {
-                listener(true)
-                return
-            }
-            initializationListeners.add(listener)
-        }
-
-        @Synchronized
-        fun removeInitializationListener(listener: (Boolean) -> Unit) {
-            initializationListeners.remove(listener)
-        }
-
-        @Synchronized
-        fun notifyInitializationListeners(success: Boolean) {
-            if (initializationListeners.isEmpty()) return
-            val listeners = initializationListeners.toList()
-            initializationListeners.clear()
-            listeners.forEach { it(success) }
-        }
     }
 
     private var mediaProjection: MediaProjection? = null
@@ -111,13 +87,12 @@ class ScreenCaptureService : Service() {
             initializeProjection(resultCode, data)
         } else {
             Log.w(TAG, "onStartCommand: missing or invalid projection data (resultCode=$resultCode), service will not capture")
-            notifyInitializationListeners(false)
         }
 
         return START_NOT_STICKY
     }
 
-    fun initializeProjection(resultCode: Int, data: Intent): Boolean {
+    fun initializeProjection(resultCode: Int, data: Intent) {
         Log.d(TAG, "initializeProjection: setting up with resultCode=$resultCode")
 
         // IMPORTANT: Unregister the old callback BEFORE stopping the old projection.
@@ -152,8 +127,7 @@ class ScreenCaptureService : Service() {
 
             if (mediaProjection == null) {
                 Log.e(TAG, "initializeProjection: getMediaProjection returned null")
-                notifyInitializationListeners(false)
-                return false
+                return
             }
 
             // Android 14+ requires registering a callback BEFORE createVirtualDisplay
@@ -177,14 +151,10 @@ class ScreenCaptureService : Service() {
                 mediaProjection!!.registerCallback(callback, Handler(Looper.getMainLooper()))
             }
 
-            val initialized = setupVirtualDisplay()
-            Log.d(TAG, "initializeProjection: success=$initialized, imageReader=${imageReader != null}")
-            notifyInitializationListeners(initialized)
-            return initialized
+            setupVirtualDisplay()
+            Log.d(TAG, "initializeProjection: success, imageReader=${imageReader != null}")
         } catch (e: Exception) {
             Log.e(TAG, "initializeProjection: failed", e)
-            notifyInitializationListeners(false)
-            return false
         }
     }
 
@@ -198,7 +168,7 @@ class ScreenCaptureService : Service() {
         screenDensity = metrics.densityDpi
     }
 
-    private fun setupVirtualDisplay(): Boolean {
+    private fun setupVirtualDisplay() {
         imageReader = ImageReader.newInstance(screenWidth, screenHeight, PixelFormat.RGBA_8888, 2)
         virtualDisplay = mediaProjection?.createVirtualDisplay(
             "ScreenCapture",
@@ -207,7 +177,6 @@ class ScreenCaptureService : Service() {
             imageReader!!.surface, null, null
         )
         Log.d(TAG, "setupVirtualDisplay: virtualDisplay=${virtualDisplay != null}")
-        return virtualDisplay != null && imageReader != null
     }
 
     fun captureScreen(callback: (ByteArray?) -> Unit) {
