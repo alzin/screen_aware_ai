@@ -10,6 +10,25 @@ class VoiceService {
   bool _isListening = false;
   bool _isSpeaking = false;
   bool _errorOccurred = false;
+  String _currentTtsLanguage = 'en-US';
+
+  static const Map<String, String> _langToTtsLocale = {
+    'en': 'en-US',
+    'ja': 'ja-JP',
+    'ar': 'ar-SA',
+  };
+
+  // speech_to_text uses the same locale IDs as TTS on Android.
+  static const Map<String, String> _langToSttLocale = {
+    'en': 'en_US',
+    'ja': 'ja_JP',
+    'ar': 'ar_SA',
+  };
+
+  /// Resolve a short language code ("en"/"ja") to an STT locale ID.
+  /// Returns null for unknown codes so STT falls back to its default.
+  static String? sttLocaleFor(String? lang) =>
+      _langToSttLocale[lang?.toLowerCase()];
 
   bool get isListening => _isListening;
   bool get isSpeaking => _isSpeaking;
@@ -42,6 +61,7 @@ class VoiceService {
       );
 
       await _tts.setLanguage('en-US');
+      _currentTtsLanguage = 'en-US';
       await _tts.setSpeechRate(0.5);
       await _tts.setVolume(1.0);
       await _tts.setPitch(1.0);
@@ -57,7 +77,7 @@ class VoiceService {
     }
   }
 
-  Future<void> startListening() async {
+  Future<void> startListening({String? localeId}) async {
     if (!_isInitialized) {
       await initialize();
     }
@@ -83,6 +103,7 @@ class VoiceService {
       },
       listenFor: const Duration(seconds: 30),
       pauseFor: const Duration(seconds: 3),
+      localeId: localeId,
       listenOptions: stt.SpeechListenOptions(
         partialResults: true,
         cancelOnError: true,
@@ -97,12 +118,18 @@ class VoiceService {
     }
   }
 
-  Future<void> speak(String text) async {
+  Future<void> speak(String text, {String? lang}) async {
     if (!_isInitialized) await initialize();
 
     // Stop listening while speaking
     if (_isListening) {
       await stopListening();
+    }
+
+    final targetLocale = _langToTtsLocale[lang?.toLowerCase()] ?? 'en-US';
+    if (targetLocale != _currentTtsLanguage) {
+      await _tts.setLanguage(targetLocale);
+      _currentTtsLanguage = targetLocale;
     }
 
     _isSpeaking = true;

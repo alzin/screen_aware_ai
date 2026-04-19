@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'ai_service.dart';
 import 'voice_service.dart';
 import 'screen_capture_service.dart';
@@ -72,7 +73,7 @@ class AgentController extends ChangeNotifier {
   int _listenRetryCount = 0;
   static const int _maxListenRetries = 3;
 
-  static const int _maxStepsPerCommand = 10;
+  static const int _maxStepsPerCommand = 50;
   static const Duration _uiPollInterval = Duration(milliseconds: 120);
   static const Duration _tapReadyTimeout = Duration(milliseconds: 900);
   static const Duration _typeReadyTimeout = Duration(milliseconds: 900);
@@ -82,6 +83,54 @@ class AgentController extends ChangeNotifier {
   bool _cancelRequested = false;
 
   bool _isAskingForFurtherHelp = false;
+
+  /// Language code of the most recent agent reply ("en" or "ja").
+  /// Used to localize hardcoded follow-ups, cancel-word detection, TTS, and STT locale.
+  String _currentLang = 'en';
+  String get currentLang => _currentLang;
+
+  static const String _langPrefKey = 'lucy_lang';
+  static const Set<String> _supportedLangs = {'en', 'ja', 'ar'};
+
+  /// Set the UI/voice language. Persists across restarts. Restarts the
+  /// listener if currently active so STT picks up the new locale.
+  Future<void> setLanguage(String lang) async {
+    final normalized = lang.toLowerCase();
+    if (!_supportedLangs.contains(normalized)) return;
+    if (_currentLang == normalized) return;
+    _currentLang = normalized;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_langPrefKey, normalized);
+    if (_isActive && _state == AgentState.listening) {
+      await _voiceService.stopListening();
+      _startListening();
+    }
+  }
+
+  static const Map<String, String> _followUps = {
+    'en': 'Do you need any further help?',
+    'ja': '他に何かお手伝いできることはありますか？',
+    'ar': 'هل تحتاج إلى أي مساعدة أخرى؟',
+  };
+  static const Map<String, String> _stoppingMessages = {
+    'en': 'Alright, stopping the agent.',
+    'ja': 'わかりました。エージェントを停止します。',
+    'ar': 'حسنًا، سأوقف المساعد الآن.',
+  };
+
+  // Patterns that mean "no, I'm done" when replying to the follow-up prompt.
+  static final RegExp _negativeEn = RegExp(
+    r'^(no|nope|nah|stop|exit|nothing|not\b.*)$',
+  );
+  // Hiragana/katakana/kanji forms of "no", "stop", "that's enough", "done".
+  static final RegExp _negativeJa = RegExp(
+    r'(いいえ|いえ|けっこう|結構|もういい|もう大丈夫|大丈夫|終了|終わり|やめて|止めて|停止|いらない|不要|ない)',
+  );
+  // Arabic forms: "no", "stop", "enough", "done", "nothing".
+  static final RegExp _negativeAr = RegExp(
+    r'(لا|كلا|توقف|قف|اوقف|أوقف|اكتفي|يكفي|كفى|انتهى|انتهيت|خلاص|لا شيء|لا شكرا|لا شكرًا)',
+  );
 
   AiService get aiService => _aiService;
   ScreenCaptureManager get screenCapture => _screenCapture;
@@ -97,6 +146,12 @@ class AgentController extends ChangeNotifier {
   }
 
   Future<void> initialize() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedLang = prefs.getString(_langPrefKey);
+    if (savedLang != null && _supportedLangs.contains(savedLang)) {
+      _currentLang = savedLang;
+    }
+
     await _voiceService.initialize();
 
     // Wire native stop notification action → requestCancel
@@ -225,7 +280,9 @@ class AgentController extends ChangeNotifier {
     _currentTranscript = '';
     notifyListeners();
 
-    await _voiceService.startListening();
+    await _voiceService.startListening(
+      localeId: VoiceService.sttLocaleFor(_currentLang),
+    );
   }
 
   /// Main handler: user says something → agent loop begins.
@@ -241,21 +298,19 @@ class AgentController extends ChangeNotifier {
 
     if (_isAskingForFurtherHelp) {
       _isAskingForFurtherHelp = false;
-      final textLower = text.trim().toLowerCase().replaceAll(
-        RegExp(r'[^\w\s]'),
-        '',
-      );
-      if (textLower.startsWith('no ') ||
-          textLower == 'no' ||
-          textLower == 'nope' ||
-          textLower == 'nah' ||
-          textLower == 'stop' ||
-          textLower == 'exit' ||
-          textLower == 'nothing' ||
-          textLower.startsWith('not ')) {
+      final trimmed = text.trim();
+      final textLowerAscii = trimmed
+          .toLowerCase()
+          .replaceAll(RegExp(r'[^\w\s]'), '');
+      final isNegative =
+          _negativeEn.hasMatch(textLowerAscii) ||
+          _negativeJa.hasMatch(trimmed) ||
+          _negativeAr.hasMatch(trimmed);
+      if (isNegative) {
         _setState(AgentState.speaking);
-        _addConversation('Alright, stopping the agent.', false);
-        await _voiceService.speak('Alright, stopping the agent.');
+        final stopMsg = _stoppingMessages[_currentLang] ?? _stoppingMessages['en']!;
+        _addConversation(stopMsg, false);
+        await _voiceService.speak(stopMsg, lang: _currentLang);
 
         await Future.delayed(const Duration(milliseconds: 500));
         while (_voiceService.isSpeaking) {
@@ -325,6 +380,18 @@ class AgentController extends ChangeNotifier {
 
       if (_cancelRequested) break;
 
+      // Update the current language from the AI's tag (falls back to previous).
+      if (_supportedLangs.contains(agentResponse.lang) &&
+          agentResponse.lang != _currentLang) {
+        _currentLang = agentResponse.lang;
+        // Persist so next launch + STT locale match what the user actually spoke.
+        unawaited(
+          SharedPreferences.getInstance().then(
+            (prefs) => prefs.setString(_langPrefKey, _currentLang),
+          ),
+        );
+      }
+
       // Show AI response and action summary in conversation
       String speakText = agentResponse.speak;
       if (agentResponse.done) {
@@ -333,7 +400,7 @@ class AgentController extends ChangeNotifier {
             !speakText.endsWith('\n')) {
           speakText += ' ';
         }
-        speakText += 'Do you need any further help?';
+        speakText += _followUps[_currentLang] ?? _followUps['en']!;
         _isAskingForFurtherHelp = true;
       } else {
         _isAskingForFurtherHelp = false;
@@ -378,7 +445,7 @@ class AgentController extends ChangeNotifier {
         notifyListeners();
 
         final ttsText = _trimForTts(speakText);
-        await _voiceService.speak(ttsText);
+        await _voiceService.speak(ttsText, lang: _currentLang);
 
         // Wait for TTS to finish
         await Future.delayed(const Duration(milliseconds: 500));
