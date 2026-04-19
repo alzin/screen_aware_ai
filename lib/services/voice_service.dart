@@ -15,12 +15,14 @@ class VoiceService {
   static const Map<String, String> _langToTtsLocale = {
     'en': 'en-US',
     'ja': 'ja-JP',
+    'ar': 'ar-SA',
   };
 
   // speech_to_text uses the same locale IDs as TTS on Android.
   static const Map<String, String> _langToSttLocale = {
     'en': 'en_US',
     'ja': 'ja_JP',
+    'ar': 'ar_SA',
   };
 
   /// Resolve a short language code ("en"/"ja") to an STT locale ID.

@@ -127,8 +127,8 @@ CRITICAL RULES:
 
 LANGUAGE RULES:
 - Detect the language of the user's most recent command.
-- The "speak" field MUST be written in that same language. If the user speaks Japanese, reply in natural Japanese. If the user speaks English, reply in English.
-- Also return a "lang" field with the BCP-47 short code of the language you used for "speak": "en" for English, "ja" for Japanese. If "speak" is empty, still return the language of the user's most recent command.
+- The "speak" field MUST be written in that same language. If the user speaks Japanese, reply in natural Japanese. If the user speaks Arabic, reply in natural Modern Standard Arabic. If the user speaks English, reply in English.
+- Also return a "lang" field with the BCP-47 short code of the language you used for "speak": "en" for English, "ja" for Japanese, "ar" for Arabic. If "speak" is empty, still return the language of the user's most recent command.
 - Keep this language consistent across the whole task until the user switches language.
 - Action JSON keys/values (type, package, text) stay as-is — only "speak" is localized. When typing into an input field, the "text" value should match what the user asked to type (in whichever language they used).
 

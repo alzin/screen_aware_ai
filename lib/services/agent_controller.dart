@@ -90,7 +90,7 @@ class AgentController extends ChangeNotifier {
   String get currentLang => _currentLang;
 
   static const String _langPrefKey = 'lucy_lang';
-  static const Set<String> _supportedLangs = {'en', 'ja'};
+  static const Set<String> _supportedLangs = {'en', 'ja', 'ar'};
 
   /// Set the UI/voice language. Persists across restarts. Restarts the
   /// listener if currently active so STT picks up the new locale.
@@ -108,10 +108,16 @@ class AgentController extends ChangeNotifier {
     }
   }
 
-  static const String _followUpEn = 'Do you need any further help?';
-  static const String _followUpJa = '他に何かお手伝いできることはありますか？';
-  static const String _stoppingEn = 'Alright, stopping the agent.';
-  static const String _stoppingJa = 'わかりました。エージェントを停止します。';
+  static const Map<String, String> _followUps = {
+    'en': 'Do you need any further help?',
+    'ja': '他に何かお手伝いできることはありますか？',
+    'ar': 'هل تحتاج إلى أي مساعدة أخرى؟',
+  };
+  static const Map<String, String> _stoppingMessages = {
+    'en': 'Alright, stopping the agent.',
+    'ja': 'わかりました。エージェントを停止します。',
+    'ar': 'حسنًا، سأوقف المساعد الآن.',
+  };
 
   // Patterns that mean "no, I'm done" when replying to the follow-up prompt.
   static final RegExp _negativeEn = RegExp(
@@ -120,6 +126,10 @@ class AgentController extends ChangeNotifier {
   // Hiragana/katakana/kanji forms of "no", "stop", "that's enough", "done".
   static final RegExp _negativeJa = RegExp(
     r'(いいえ|いえ|けっこう|結構|もういい|もう大丈夫|大丈夫|終了|終わり|やめて|止めて|停止|いらない|不要|ない)',
+  );
+  // Arabic forms: "no", "stop", "enough", "done", "nothing".
+  static final RegExp _negativeAr = RegExp(
+    r'(لا|كلا|توقف|قف|اوقف|أوقف|اكتفي|يكفي|كفى|انتهى|انتهيت|خلاص|لا شيء|لا شكرا|لا شكرًا)',
   );
 
   AiService get aiService => _aiService;
@@ -294,10 +304,11 @@ class AgentController extends ChangeNotifier {
           .replaceAll(RegExp(r'[^\w\s]'), '');
       final isNegative =
           _negativeEn.hasMatch(textLowerAscii) ||
-          _negativeJa.hasMatch(trimmed);
+          _negativeJa.hasMatch(trimmed) ||
+          _negativeAr.hasMatch(trimmed);
       if (isNegative) {
         _setState(AgentState.speaking);
-        final stopMsg = _currentLang == 'ja' ? _stoppingJa : _stoppingEn;
+        final stopMsg = _stoppingMessages[_currentLang] ?? _stoppingMessages['en']!;
         _addConversation(stopMsg, false);
         await _voiceService.speak(stopMsg, lang: _currentLang);
 
@@ -389,7 +400,7 @@ class AgentController extends ChangeNotifier {
             !speakText.endsWith('\n')) {
           speakText += ' ';
         }
-        speakText += _currentLang == 'ja' ? _followUpJa : _followUpEn;
+        speakText += _followUps[_currentLang] ?? _followUps['en']!;
         _isAskingForFurtherHelp = true;
       } else {
         _isAskingForFurtherHelp = false;

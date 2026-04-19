@@ -595,6 +595,12 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
+  static const Map<String, String> _langBadges = {
+    'en': 'EN',
+    'ja': 'JA',
+    'ar': 'AR',
+  };
+
   Widget _buildLanguageToggle() {
     final current = widget.controller.currentLang;
     return PopupMenuButton<String>(
@@ -604,6 +610,7 @@ class _HomeScreenState extends State<HomeScreen>
       itemBuilder: (_) => const [
         PopupMenuItem(value: 'en', child: Text('English')),
         PopupMenuItem(value: 'ja', child: Text('日本語')),
+        PopupMenuItem(value: 'ar', child: Text('العربية')),
       ],
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -613,7 +620,7 @@ class _HomeScreenState extends State<HomeScreen>
             const Icon(Icons.language, size: 18),
             const SizedBox(width: 4),
             Text(
-              current == 'ja' ? 'JA' : 'EN',
+              _langBadges[current] ?? 'EN',
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
             ),
           ],
