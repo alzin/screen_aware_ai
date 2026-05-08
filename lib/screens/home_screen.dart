@@ -521,36 +521,8 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ),
 
-            // Right area: Last screenshot preview
-            Expanded(
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: widget.controller.lastScreenshotBytes != null
-                    ? GestureDetector(
-                        onTap: () => _showScreenshotPreview(context),
-                        child: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: colorScheme.outline.withOpacity(0.3),
-                            ),
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(7),
-                            child: Image.memory(
-                              widget.controller.lastScreenshotBytes!,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, error, stackTrace) =>
-                                  const Icon(Icons.image, size: 20),
-                            ),
-                          ),
-                        ),
-                      )
-                    : const SizedBox.shrink(),
-              ),
-            ),
+            // Right area: spacer for layout balance
+            const Expanded(child: SizedBox.shrink()),
           ],
         ),
       ),
@@ -682,37 +654,5 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  void _showScreenshotPreview(BuildContext context) {
-    final bytes = widget.controller.lastScreenshotBytes;
-    if (bytes == null) return;
 
-    showDialog(
-      context: context,
-      builder: (ctx) => Dialog(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AppBar(
-              title: const Text('Last Screenshot'),
-              automaticallyImplyLeading: false,
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.pop(ctx),
-                ),
-              ],
-            ),
-            Image.memory(
-              bytes,
-              fit: BoxFit.contain,
-              errorBuilder: (_, error, stackTrace) => const Padding(
-                padding: EdgeInsets.all(32),
-                child: Text('Could not load screenshot'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
