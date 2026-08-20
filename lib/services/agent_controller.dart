@@ -299,16 +299,18 @@ class AgentController extends ChangeNotifier {
     if (_isAskingForFurtherHelp) {
       _isAskingForFurtherHelp = false;
       final trimmed = text.trim();
-      final textLowerAscii = trimmed
-          .toLowerCase()
-          .replaceAll(RegExp(r'[^\w\s]'), '');
+      final textLowerAscii = trimmed.toLowerCase().replaceAll(
+        RegExp(r'[^\w\s]'),
+        '',
+      );
       final isNegative =
           _negativeEn.hasMatch(textLowerAscii) ||
           _negativeJa.hasMatch(trimmed) ||
           _negativeAr.hasMatch(trimmed);
       if (isNegative) {
         _setState(AgentState.speaking);
-        final stopMsg = _stoppingMessages[_currentLang] ?? _stoppingMessages['en']!;
+        final stopMsg =
+            _stoppingMessages[_currentLang] ?? _stoppingMessages['en']!;
         _addConversation(stopMsg, false);
         await _voiceService.speak(stopMsg, lang: _currentLang);
 
