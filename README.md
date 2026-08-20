@@ -60,6 +60,24 @@ Say *"Open WhatsApp and send Sarah a message saying I'm running late."* Lucy wil
 
 Because Lucy works at the screen level, she works with **any app on your phone** — no integration required.
 
+### Who Lucy is for
+
+Lucy started with a simple problem: **driving**. On a long drive you constantly want small things from your phone — reply to a message, skip to another playlist, re-route to a petrol station — and every one of them normally means picking the phone up. Lucy lets you ask out loud and keep both hands on the wheel.
+
+That turned out to be one case out of several. The common thread is *your hands are busy, or using them is hard*:
+
+| | |
+|---|---|
+| 🚗 **Driving** | Reply, navigate and change music by voice, without reaching for the phone. |
+| ♿ **Limited dexterity** | Tremor, arthritis, RSI, paralysis, or a temporary cast — Lucy does the tapping. Screen readers describe a screen; Lucy actually operates it. |
+| 👩‍🍳 **Hands full or dirty** | Cooking, workshop, gardening, gloves in winter, carrying a child or the shopping. |
+| 👴 **Unfamiliar with the phone** | Say what you want instead of hunting through five levels of settings menus. |
+| 🔁 **Tedious multi-step chores** | Anything buried eight taps deep across three apps becomes one sentence. |
+| 🧩 **Apps with no automation** | No API, no Shortcuts support, no integration? Doesn't matter — Lucy drives the UI itself. |
+
+> [!WARNING]
+> Lucy is a hands-free convenience, **not a safety device**. She is experimental and can act on the wrong element. If you use her while driving, set the command running before you move off and keep your eyes on the road — never read or correct her mid-drive. Obey your local road traffic laws; in many countries, including Japan, operating or looking at a phone screen while the vehicle is moving is an offence regardless of how the phone is controlled.
+
 ---
 
 ## ✨ Features
