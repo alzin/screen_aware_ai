@@ -96,10 +96,7 @@ class VoiceService {
     _errorOccurred = false;
     await _speech.listen(
       onResult: (result) {
-        onResult?.call(
-          result.recognizedWords,
-          result.finalResult,
-        );
+        onResult?.call(result.recognizedWords, result.finalResult);
       },
       listenFor: const Duration(seconds: 30),
       pauseFor: const Duration(seconds: 3),
