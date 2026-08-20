@@ -12,6 +12,7 @@
 [![Platform](https://img.shields.io/badge/Platform-Android%207.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com)
 [![Gemini](https://img.shields.io/badge/AI-Google%20Gemini-8E75B2?logo=googlegemini&logoColor=white)](https://ai.google.dev)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![Ko-fi](https://img.shields.io/badge/Support-Ko--fi-FF5E5B?logo=kofi&logoColor=white)](https://ko-fi.com/alzin)
 
 [Quick Start](#-quick-start) · [How It Works](#-how-it-works) · [Contributing](CONTRIBUTING.md) · [Troubleshooting](#-troubleshooting)
 
@@ -38,6 +39,7 @@
 - [Privacy & Security](#-privacy--security)
 - [Roadmap](#-roadmap)
 - [Contributing](#-contributing)
+- [Support the Project](#-support-the-project)
 - [License](#-license)
 
 ---
@@ -452,6 +454,16 @@ Ideas that would make great contributions. Comment on an issue or open one to cl
 Good first issues are labelled [`good first issue`](https://github.com/alzin/lucy-screen-agent/labels/good%20first%20issue).
 
 By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+---
+
+## ☕ Support the Project
+
+Lucy is free, open source, and developed in spare time. If she saves you some of yours, you can chip in:
+
+<a href="https://ko-fi.com/alzin"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white" alt="Support on Ko-fi" height="36"></a>
+
+Support is entirely optional and buys no priority on issues or pull requests — it just keeps the API bills paid and the roadmap moving. Starring the repo and filing good bug reports helps just as much.
 
 ---
 
