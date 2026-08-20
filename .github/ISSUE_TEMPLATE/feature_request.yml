@@ -1,0 +1,79 @@
+name: 💡 Feature Request
+description: Suggest a new capability or improvement for Lucy
+title: "[Feature]: "
+labels: ["enhancement", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea! 💡
+
+        Have a look at the [roadmap](https://github.com/alzin/lucy-screen-agent#-roadmap) first — if what you want is already listed, comment on the relevant issue instead so the discussion stays in one place.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Start with the pain, not the solution. What can't you do today?
+      placeholder: |
+        When Lucy is about to send a message, I have no chance to check what
+        she's going to say before it goes out.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: What would you like to happen?
+      description: Describe the feature as concretely as you can.
+      placeholder: |
+        Before executing a `type` action into a message field, or tapping an
+        element labelled "Send", Lucy pauses and asks for spoken confirmation.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of Lucy does this touch?
+      options:
+        - Agent loop / decision making
+        - Safety and confirmations
+        - Voice (speech recognition or text-to-speech)
+        - Screen capture
+        - Accessibility actions (tap/type/swipe)
+        - UI and conversation view
+        - Languages and localization
+        - AI backend / model
+        - Documentation
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've considered
+      description: Other approaches, and why they're worse.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: contribute
+    attributes:
+      label: Would you like to build this?
+      description: No pressure either way — good ideas are valuable on their own.
+      options:
+        - "Yes, I'd like to work on it"
+        - "Maybe, with some guidance"
+        - "No, just suggesting"
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else?
+      description: Mockups, links to how other projects solve this, related issues.
+    validations:
+      required: false

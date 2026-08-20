@@ -1,0 +1,14 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 📱 Device compatibility report
+    url: https://github.com/alzin/lucy-screen-agent/issues/new?labels=device-report&title=%5BDevice%5D%3A+
+    about: Tell us how Lucy behaves on your phone — especially Xiaomi, Oppo, Vivo and Samsung, where accessibility and battery settings differ.
+  - name: 🔐 Report a security vulnerability
+    url: https://github.com/alzin/lucy-screen-agent/security/advisories/new
+    about: Please report security issues privately, never as a public issue.
+  - name: 📖 Read the architecture guide
+    url: https://github.com/alzin/lucy-screen-agent/blob/main/docs/ARCHITECTURE.md
+    about: How the agent loop, platform channel and accessibility layer fit together.
+  - name: 🤝 Contributing guide
+    url: https://github.com/alzin/lucy-screen-agent/blob/main/CONTRIBUTING.md
+    about: Dev setup, code style, and step-by-step recipes for adding actions or languages.

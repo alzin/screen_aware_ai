@@ -1,0 +1,122 @@
+name: 🐛 Bug Report
+description: Something in Lucy doesn't work the way it should
+title: "[Bug]: "
+labels: ["bug", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a report! 🙏
+
+        Lucy's behaviour varies a lot across devices and Android versions, so the device details below genuinely matter — please don't skip them.
+
+        > ⚠️ **Security issues don't belong here.** Please follow [SECURITY.md](https://github.com/alzin/lucy-screen-agent/blob/main/SECURITY.md) instead.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Before you start
+      options:
+        - label: I searched [existing issues](https://github.com/alzin/lucy-screen-agent/issues?q=is%3Aissue) and this isn't a duplicate
+          required: true
+        - label: I read the [Troubleshooting](https://github.com/alzin/lucy-screen-agent#-troubleshooting) section
+          required: true
+        - label: The accessibility service is enabled and screen capture was granted
+          required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the bug. What did you expect, and what did Lucy do instead?
+      placeholder: |
+        I asked Lucy to open WhatsApp and send a message. She opened WhatsApp
+        but then tapped the camera icon instead of the search field.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: The more precise, the faster this gets fixed.
+      placeholder: |
+        1. Open Lucy on the home screen
+        2. Tap the mic button
+        3. Say "open WhatsApp and message Sarah hello"
+        4. Watch the third agent step
+    validations:
+      required: true
+
+  - type: input
+    id: command
+    attributes:
+      label: What exactly did you say to Lucy?
+      description: The literal voice command, in the language you used.
+      placeholder: '"Open the calculator and work out 47 times 12"'
+    validations:
+      required: false
+
+  - type: input
+    id: target-app
+    attributes:
+      label: Which app was Lucy interacting with?
+      description: Package name if you know it. Write "Lucy itself" if the bug is in the app's own UI.
+      placeholder: "WhatsApp (com.whatsapp)"
+    validations:
+      required: false
+
+  - type: input
+    id: device
+    attributes:
+      label: Device
+      placeholder: "Pixel 7a / Samsung Galaxy S23 / Xiaomi Redmi Note 12"
+    validations:
+      required: true
+
+  - type: input
+    id: android-version
+    attributes:
+      label: Android version
+      placeholder: "Android 14 (One UI 6.1)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: language
+    attributes:
+      label: Language selected in the app
+      options:
+        - English
+        - 日本語 (Japanese)
+        - العربية (Arabic)
+    validations:
+      required: true
+
+  - type: input
+    id: flutter-version
+    attributes:
+      label: Flutter version
+      description: Output of `flutter --version` (only needed if you built from source)
+      placeholder: "Flutter 3.47.1 • Dart 3.13.1"
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Very helpful for native issues. Run this while reproducing:
+        `adb logcat -s MainActivity ScreenCaptureService ScreenActionService OverlayService`
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or screen recording
+      description: Drag and drop here. Lucy's conversation view showing the wrong action is ideal.
+    validations:
+      required: false
