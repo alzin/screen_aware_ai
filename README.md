@@ -12,6 +12,7 @@
 [![Platform](https://img.shields.io/badge/Platform-Android%207.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com)
 [![Gemini](https://img.shields.io/badge/AI-Google%20Gemini-8E75B2?logo=googlegemini&logoColor=white)](https://ai.google.dev)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![Ko-fi](https://img.shields.io/badge/Support-Ko--fi-FF5E5B?logo=kofi&logoColor=white)](https://ko-fi.com/alzin)
 
 [Quick Start](#-quick-start) · [How It Works](#-how-it-works) · [Contributing](CONTRIBUTING.md) · [Troubleshooting](#-troubleshooting)
 
@@ -38,6 +39,7 @@
 - [Privacy & Security](#-privacy--security)
 - [Roadmap](#-roadmap)
 - [Contributing](#-contributing)
+- [Support the Project](#-support-the-project)
 - [License](#-license)
 
 ---
@@ -57,6 +59,24 @@ Say *"Open WhatsApp and send Sarah a message saying I'm running late."* Lucy wil
 7. 🔊 Speak the result back to you, in your language
 
 Because Lucy works at the screen level, she works with **any app on your phone** — no integration required.
+
+### Who Lucy is for
+
+Lucy started with a simple problem: **driving**. On a long drive you constantly want small things from your phone — reply to a message, skip to another playlist, re-route to a petrol station — and every one of them normally means picking the phone up. Lucy lets you ask out loud and keep both hands on the wheel.
+
+That turned out to be one case out of several. The common thread is *your hands are busy, or using them is hard*:
+
+| | |
+|---|---|
+| 🚗 **Driving** | Reply, navigate and change music by voice, without reaching for the phone. |
+| ♿ **Limited dexterity** | Tremor, arthritis, RSI, paralysis, or a temporary cast — Lucy does the tapping. Screen readers describe a screen; Lucy actually operates it. |
+| 👩‍🍳 **Hands full or dirty** | Cooking, workshop, gardening, gloves in winter, carrying a child or the shopping. |
+| 👴 **Unfamiliar with the phone** | Say what you want instead of hunting through five levels of settings menus. |
+| 🔁 **Tedious multi-step chores** | Anything buried eight taps deep across three apps becomes one sentence. |
+| 🧩 **Apps with no automation** | No API, no Shortcuts support, no integration? Doesn't matter — Lucy drives the UI itself. |
+
+> [!WARNING]
+> Lucy is a hands-free convenience, **not a safety device**. She is experimental and can act on the wrong element. If you use her while driving, set the command running before you move off and keep your eyes on the road — never read or correct her mid-drive. Obey your local road traffic laws; in many countries, including Japan, operating or looking at a phone screen while the vehicle is moving is an offence regardless of how the phone is controlled.
 
 ---
 
@@ -452,6 +472,16 @@ Ideas that would make great contributions. Comment on an issue or open one to cl
 Good first issues are labelled [`good first issue`](https://github.com/alzin/lucy-screen-agent/labels/good%20first%20issue).
 
 By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+---
+
+## ☕ Support the Project
+
+Lucy is free, open source, and developed in spare time. If she saves you some of yours, you can chip in:
+
+<a href="https://ko-fi.com/alzin"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white" alt="Support on Ko-fi" height="36"></a>
+
+Support is entirely optional and buys no priority on issues or pull requests — it just keeps the API bills paid and the roadmap moving. Starring the repo and filing good bug reports helps just as much.
 
 ---
 
