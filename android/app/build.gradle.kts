@@ -9,11 +9,17 @@ plugins {
 }
 
 
+// A release keystore is optional. `android/key.properties` is gitignored, so a
+// fresh clone (and CI without the signing secrets configured) has no keystore.
+// Rather than failing the build, `release` then falls back to the debug signing
+// key so an installable APK can still be produced. See docs/RELEASING.md.
 val keystorePropertiesFile = rootProject.file("key.properties")
 val keystoreProperties = Properties()
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
+val releaseKeystorePath: String? = keystoreProperties.getProperty("storeFile")
+val hasReleaseKeystore = releaseKeystorePath != null
 
 android {
     namespace = "com.poc.screen_aware_ai"
@@ -41,20 +47,28 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            keyAlias = keystoreProperties.getProperty("keyAlias")
-            keyPassword = keystoreProperties.getProperty("keyPassword")
-            val keystoreFile = keystoreProperties.getProperty("storeFile")
-            if (keystoreFile != null) {
-                storeFile = file(keystoreFile)
+        if (hasReleaseKeystore) {
+            create("release") {
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+                storeFile = file(releaseKeystorePath!!)
+                storePassword = keystoreProperties.getProperty("storePassword")
             }
-            storePassword = keystoreProperties.getProperty("storePassword")
         }
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = if (hasReleaseKeystore) {
+                signingConfigs.getByName("release")
+            } else {
+                project.logger.lifecycle(
+                    "⚠️  No android/key.properties found - signing the release build " +
+                        "with the debug key. Installable, but the signature changes between " +
+                        "machines, so users must uninstall before updating. See docs/RELEASING.md."
+                )
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }

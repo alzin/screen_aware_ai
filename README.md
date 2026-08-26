@@ -6,6 +6,8 @@
 
 **Lucy sees your screen, understands what's on it, and taps, types and swipes for you — all from a voice command.**
 
+[![Latest release](https://img.shields.io/github/v/release/alzin/lucy-screen-agent?label=release&color=3DDC84&logo=android&logoColor=white)](https://github.com/alzin/lucy-screen-agent/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/alzin/lucy-screen-agent/total?label=downloads&color=6C63FF)](https://github.com/alzin/lucy-screen-agent/releases)
 [![CI](https://github.com/alzin/lucy-screen-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/alzin/lucy-screen-agent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Flutter](https://img.shields.io/badge/Flutter-3.47%2B-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
@@ -14,7 +16,27 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 [![Ko-fi](https://img.shields.io/badge/Support-Ko--fi-FF5E5B?logo=kofi&logoColor=white)](https://ko-fi.com/alzin)
 
-[Quick Start](#-quick-start) · [How It Works](#-how-it-works) · [Contributing](CONTRIBUTING.md) · [Troubleshooting](#-troubleshooting)
+<a href="https://github.com/alzin/lucy-screen-agent/releases/latest/download/lucy-latest.apk"><img src="https://img.shields.io/badge/⬇%20Download%20the%20APK-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Download the latest APK" height="38"></a>
+
+[Download](#-download--install) · [Quick Start](#-quick-start) · [How It Works](#-how-it-works) · [Contributing](CONTRIBUTING.md) · [Troubleshooting](#-troubleshooting)
+
+</div>
+
+---
+
+<div align="center">
+
+### 🎬 Lucy in action
+
+<img src="docs/media/lucy-demo.gif" alt="Lucy opening Gmail, filling in the recipient, subject and body, and sending an email — driven entirely by one spoken command" width="380">
+
+> *"There's an e-mail called 'my manager' in my e-mail list. I want you to send an
+> e-mail with the subject 'Today's agenda' mentioning the team meeting at 10 AM."*
+
+Lucy finds the contact, opens the compose screen, fills in the recipient, subject
+and body, and sends it. Every tap and keystroke is hers.
+
+**[▶ Watch the full 68-second demo](https://github.com/alzin/lucy-screen-agent/raw/main/docs/media/lucy-demo.mp4)** *(MP4, 2.8 MB)*
 
 </div>
 
@@ -29,11 +51,12 @@
 
 - [What is Lucy?](#-what-is-lucy)
 - [Features](#-features)
+- [Download & Install](#-download--install)
 - [How It Works](#-how-it-works)
 - [Requirements](#-requirements)
 - [Quick Start](#-quick-start)
 - [Using Lucy](#-using-lucy)
-- [Building a Release APK](#-building-a-release-apk)
+- [Building & Releasing](#-building--releasing)
 - [Project Structure](#-project-structure)
 - [Troubleshooting](#-troubleshooting)
 - [Privacy & Security](#-privacy--security)
@@ -92,6 +115,54 @@ That turned out to be one case out of several. The common thread is *your hands 
 | 🛑 **Always interruptible** | A persistent "Stop Lucy" notification cancels the agent instantly, even while she's inside another app. |
 | 🎨 **Live transcript** | Every screenshot, action and reply is shown in a scrollable conversation view. |
 | 🔑 **Bring your own key** | Your Gemini API key stays on your device. No backend, no telemetry, no account. |
+
+---
+
+## 📥 Download & Install
+
+Every release ships a ready-to-install APK. You don't need Flutter, Android Studio,
+or a computer at all — just your phone.
+
+<div align="center">
+
+<a href="https://github.com/alzin/lucy-screen-agent/releases/latest/download/lucy-latest.apk"><img src="https://img.shields.io/badge/⬇%20Download%20lucy--latest.apk-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Download the latest APK" height="38"></a>
+
+</div>
+
+That link never changes and always serves the **newest stable build**. If you want a
+smaller download or a specific version, pick one from the
+[Releases page](https://github.com/alzin/lucy-screen-agent/releases):
+
+| File | Who it's for |
+|---|---|
+| `lucy-latest.apk` | The newest stable build, always at the same URL. Installs on any device. |
+| `lucy-vX.Y.Z-arm64-v8a.apk` | **Most people** — any Android phone from roughly 2017 onwards. Smallest download. |
+| `lucy-vX.Y.Z-universal.apk` | Every CPU variant in one file. Larger, but installs anywhere. |
+| `lucy-vX.Y.Z-armeabi-v7a.apk` | Older 32-bit phones. |
+| `lucy-vX.Y.Z-x86_64.apk` | Emulators and x86 tablets. |
+
+Each release also attaches `SHA256SUMS.txt` if you'd like to verify what you downloaded.
+
+### Installing the APK
+
+1. Tap the downloaded `.apk` — from your notification shade, or in **Files → Downloads**.
+2. Android asks whether to allow installs from your browser or file manager. Allow it (**Settings → Install unknown apps**), then tap **Install**.
+3. Play Protect may warn that the developer is unknown. That's expected for any app not distributed through the Play Store — tap **Install anyway** if you're happy to proceed.
+
+### Then three more steps
+
+Installing is only the beginning; Lucy is inert until she has her permissions and a key. The app walks you through each one:
+
+| | | Where |
+|---|---|---|
+| ♿ | Enable Lucy's **accessibility service** — this is how she taps and types | [Step 8](#-quick-start) |
+| 📸 | Grant **screen capture** when the mic button asks | [Step 9](#-quick-start) |
+| 🔑 | Paste a free **Gemini API key** from [AI Studio](https://aistudio.google.com/app/apikey) | [Steps 6–7](#-quick-start) |
+
+> [!WARNING]
+> Release APKs are currently signed with a **debug key**, so the signature isn't stable between builds. If you already have Lucy installed, **uninstall her before installing a newer version** — otherwise Android refuses the update with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`. See [docs/RELEASING.md](docs/RELEASING.md#signing).
+
+Would rather build it yourself and read the code first? That's the [Quick Start](#-quick-start) below — very reasonable, given what Lucy is allowed to do.
 
 ---
 
@@ -281,21 +352,32 @@ Lucy also stops herself automatically after **50 steps** on a single command, so
 
 ---
 
-## 📦 Building a Release APK
+## 📦 Building & Releasing
 
-Debug builds work fine for trying Lucy out. For a signed release build:
+### Published releases are automatic
+
+Nobody builds or uploads an APK by hand. [`.github/workflows/release.yml`](.github/workflows/release.yml) watches `main` and reads the `version:` in [`pubspec.yaml`](pubspec.yaml). When the semantic part — everything before the `+` — has no matching `vX.Y.Z` tag yet, it analyzes, tests, builds and publishes a GitHub Release with every APK attached.
+
+So the version bump is the trigger, not the merge: merges that leave it alone produce no release, and bumping only the build number after the `+` doesn't either. Full details, including how to cut one, live in **[docs/RELEASING.md](docs/RELEASING.md)**.
+
+### Building a release APK locally
+
+```bash
+flutter build apk --release
+```
+
+The APK lands in `build/app/outputs/flutter-apk/app-release.apk`. Without a keystore this is signed with the debug key — fine for testing on your own device, not for distribution.
 
 <details>
-<summary><b>1. Create a keystore</b></summary>
+<summary><b>Signing it with your own key</b></summary>
+
+**1. Create a keystore**
 
 ```bash
 keytool -genkey -v -keystore lucy-release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias lucy
 ```
 
-</details>
-
-<details>
-<summary><b>2. Create <code>android/key.properties</code></b></summary>
+**2. Create `android/key.properties`**
 
 ```properties
 storePassword=<your store password>
@@ -304,21 +386,17 @@ keyAlias=lucy
 storeFile=<absolute path to lucy-release.jks>
 ```
 
+Build again and Gradle picks it up automatically.
+
 > [!WARNING]
-> `key.properties` and `*.jks` are already in `.gitignore`. **Never commit them.** Anyone with your keystore can publish updates impersonating your app.
+> `key.properties`, `*.jks` and `*.keystore` are in `.gitignore`. **Never commit them.** Anyone with your keystore can publish updates impersonating your app.
+
+To sign the *published* releases too, the same keystore goes into four repository secrets — see [docs/RELEASING.md](docs/RELEASING.md#signing).
 
 </details>
 
 <details>
-<summary><b>3. Build</b></summary>
-
-```bash
-flutter build apk --release
-```
-
-The APK lands in `build/app/outputs/flutter-apk/app-release.apk`.
-
-For Play Store distribution, build an App Bundle instead:
+<summary><b>Building an App Bundle for the Play Store</b></summary>
 
 ```bash
 flutter build appbundle --release
@@ -351,7 +429,13 @@ lucy-screen-agent/
 │   └── OverlayService.kt                  # Persistent "Stop Lucy" notification
 │
 ├── test/                                  # Widget tests
-└── docs/ARCHITECTURE.md                   # Deep dive for contributors
+├── docs/
+│   ├── ARCHITECTURE.md                    # Deep dive for contributors
+│   ├── RELEASING.md                       # How versions become downloadable APKs
+│   └── media/                             # Demo video, GIF and poster frame
+└── .github/workflows/
+    ├── ci.yml                             # Format, analyze, test, debug APK
+    └── release.yml                        # Publishes a Release when the version bumps
 ```
 
 **Data flow in one line:** `home_screen.dart` → `agent_controller.dart` → (`ai_service.dart` ⇄ Gemini) → `screen_capture_service.dart` → `MethodChannel` → Kotlin services → Android.

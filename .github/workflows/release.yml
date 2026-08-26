@@ -1,0 +1,307 @@
+name: Release
+
+# Publishes a GitHub Release with downloadable APKs whenever a new semantic
+# version lands in pubspec.yaml on main (i.e. when a PR that bumps it is merged).
+#
+# The version bump is the trigger, not the merge itself: pushes to main whose
+# `version:` already has a matching vX.Y.Z tag are ignored, so ordinary merges
+# never cut a release. Bumping only the +buildNumber does not release either.
+# See docs/RELEASING.md.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: "3.47.1"
+
+jobs:
+  check:
+    name: Check for a version bump
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.version.outputs.should_release }}
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version from pubspec.yaml
+        id: version
+        run: |
+          set -euo pipefail
+
+          raw=$(grep -m1 -E '^version:' pubspec.yaml \
+            | sed -E 's/^version:[[:space:]]*//' \
+            | tr -d '\r' \
+            | sed -E 's/[[:space:]]+#.*$//' \
+            | xargs)
+
+          if [ -z "$raw" ]; then
+            echo "::error file=pubspec.yaml::No 'version:' line found."
+            exit 1
+          fi
+
+          version="${raw%%+*}"
+          tag="v${version}"
+
+          if ! echo "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error file=pubspec.yaml::Version '$version' is not semver (x.y.z)."
+            exit 1
+          fi
+
+          # A hyphen marks a pre-release (0.2.0-beta.1). Those still get
+          # published, but they must not become the rolling "latest" download.
+          case "$version" in
+            *-*) prerelease=true ;;
+            *)   prerelease=false ;;
+          esac
+
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            echo "Tag ${tag} already exists - no version bump, nothing to release."
+            should_release=false
+          else
+            echo "Version ${version} is new - will publish ${tag}."
+            should_release=true
+          fi
+
+          {
+            echo "version=${version}"
+            echo "tag=${tag}"
+            echo "prerelease=${prerelease}"
+            echo "should_release=${should_release}"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### Release check"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| pubspec version | \`${raw}\` |"
+            echo "| Tag | \`${tag}\` |"
+            echo "| Pre-release | \`${prerelease}\` |"
+            echo "| Publishing | \`${should_release}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    name: Build and publish
+    needs: check
+    # workflow_dispatch can be aimed at any ref, so pin publishing to main -
+    # otherwise a manual run on a feature branch could tag and release from it.
+    if: github.ref == 'refs/heads/main' && needs.check.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Run tests
+        run: flutter test
+
+      # Optional. Until ANDROID_KEYSTORE_BASE64 and friends are set as repository
+      # secrets, the Gradle config falls back to the debug signing key: still
+      # installable, but the signature is not stable across builds.
+      # docs/RELEASING.md has the upgrade steps.
+      - name: Configure release signing
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KEYSTORE_BASE64}" ]; then
+            echo "No signing secrets configured - falling back to the debug key."
+            echo "signed=debug" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          printf '%s' "${KEYSTORE_BASE64}" | base64 -d > "${RUNNER_TEMP}/lucy-release.jks"
+          {
+            echo "storeFile=${RUNNER_TEMP}/lucy-release.jks"
+            echo "storePassword=${KEYSTORE_PASSWORD}"
+            echo "keyAlias=${KEY_ALIAS}"
+            echo "keyPassword=${KEY_PASSWORD}"
+          } > android/key.properties
+          echo "Release keystore configured."
+          echo "signed=release" >> "$GITHUB_OUTPUT"
+
+      - name: Build universal release APK
+        run: flutter build apk --release
+
+      - name: Build per-ABI release APKs
+        run: flutter build apk --release --split-per-abi
+
+      - name: Collect and name artifacts
+        id: artifacts
+        env:
+          TAG: ${{ needs.check.outputs.tag }}
+          IS_PRERELEASE: ${{ needs.check.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          src=build/app/outputs/flutter-apk
+          mkdir -p dist
+
+          cp "${src}/app-release.apk"             "dist/lucy-${TAG}-universal.apk"
+          cp "${src}/app-arm64-v8a-release.apk"   "dist/lucy-${TAG}-arm64-v8a.apk"
+          cp "${src}/app-armeabi-v7a-release.apk" "dist/lucy-${TAG}-armeabi-v7a.apk"
+          cp "${src}/app-x86_64-release.apk"      "dist/lucy-${TAG}-x86_64.apk"
+
+          # The rolling download. Because this file name never changes,
+          # /releases/latest/download/lucy-latest.apk is a permanent link that
+          # always serves the newest stable build. Pre-releases are excluded so
+          # they cannot hijack it.
+          if [ "${IS_PRERELEASE}" = "false" ]; then
+            cp "${src}/app-release.apk" "dist/lucy-latest.apk"
+          fi
+
+          ( cd dist && sha256sum *.apk > SHA256SUMS.txt )
+          ls -lh dist
+
+          {
+            echo "universal_size=$(du -h "dist/lucy-${TAG}-universal.apk" | cut -f1)"
+            echo "arm64_size=$(du -h "dist/lucy-${TAG}-arm64-v8a.apk" | cut -f1)"
+            echo "armv7_size=$(du -h "dist/lucy-${TAG}-armeabi-v7a.apk" | cut -f1)"
+            echo "x8664_size=$(du -h "dist/lucy-${TAG}-x86_64.apk" | cut -f1)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Compose release notes
+        env:
+          TAG: ${{ needs.check.outputs.tag }}
+          VERSION: ${{ needs.check.outputs.version }}
+          SIGNED: ${{ steps.signing.outputs.signed }}
+          UNIVERSAL_SIZE: ${{ steps.artifacts.outputs.universal_size }}
+          ARM64_SIZE: ${{ steps.artifacts.outputs.arm64_size }}
+          ARMV7_SIZE: ${{ steps.artifacts.outputs.armv7_size }}
+          X8664_SIZE: ${{ steps.artifacts.outputs.x8664_size }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          base="https://github.com/${REPO}"
+          dl="${base}/releases/download/${TAG}"
+
+          # Pull this version's section out of CHANGELOG.md. Matched with
+          # index() rather than a regex so the brackets in "## [0.1.0]" need no
+          # escaping, then trimmed of the "---" rules and trailing blank lines.
+          awk -v hdr="## [${VERSION}]" '
+            index($0, hdr) == 1             { found = 1; next }
+            found && index($0, "## [") == 1 { exit }
+            found && /^\[.*\]: http/        { exit }
+            found                           { print }
+          ' CHANGELOG.md \
+            | sed -e 's/^---$//' \
+            | sed -e :a -e '/^\n*$/{$d;N;};/\n$/ba' > changelog-section.md
+
+          {
+            echo "## Install"
+            echo ""
+            echo "Download an APK below, open it on your Android phone, and allow installs"
+            echo "from your browser or file manager when prompted."
+            echo ""
+            echo "| Download | Who it is for | Size |"
+            echo "|---|---|---|"
+            echo "| [\`lucy-${TAG}-arm64-v8a.apk\`](${dl}/lucy-${TAG}-arm64-v8a.apk) | **Most people** - every Android phone from roughly 2017 onwards. | ${ARM64_SIZE} |"
+            echo "| [\`lucy-${TAG}-universal.apk\`](${dl}/lucy-${TAG}-universal.apk) | Works on any device. Larger, because it carries every CPU variant. | ${UNIVERSAL_SIZE} |"
+            echo "| [\`lucy-${TAG}-armeabi-v7a.apk\`](${dl}/lucy-${TAG}-armeabi-v7a.apk) | Older 32-bit phones. | ${ARMV7_SIZE} |"
+            echo "| [\`lucy-${TAG}-x86_64.apk\`](${dl}/lucy-${TAG}-x86_64.apk) | Emulators and x86 tablets. | ${X8664_SIZE} |"
+            echo ""
+            echo "Installing is only step one. Lucy also needs her **accessibility service**"
+            echo "enabled, **screen capture** granted, and a **Gemini API key** pasted in - the"
+            echo "app walks you through all three. See the [Quick Start](${base}#-quick-start)."
+            echo ""
+
+            if [ "${SIGNED}" = "debug" ]; then
+              echo "> [!WARNING]"
+              echo "> This build is signed with a **debug key**, so its signature is not stable"
+              echo "> between releases. If you already have Lucy installed, uninstall it before"
+              echo "> installing this one, or Android will refuse the update with"
+              echo "> \`INSTALL_FAILED_UPDATE_INCOMPATIBLE\`."
+              echo ""
+            fi
+
+            echo "> [!CAUTION]"
+            echo "> Lucy needs screen capture and an accessibility service that can tap and type"
+            echo "> on your behalf. While a task is running, anything visible on screen may be"
+            echo "> sent to Google's Gemini API. Please read"
+            echo "> [Privacy & Security](${base}#-privacy--security) before installing, and"
+            echo "> prefer a spare or test device."
+            echo ""
+
+            if [ -s changelog-section.md ]; then
+              echo "## What changed"
+              echo ""
+              cat changelog-section.md
+              echo ""
+            fi
+
+            echo "## Verify your download"
+            echo ""
+            echo "\`SHA256SUMS.txt\` is attached to this release. Check a downloaded file with:"
+            echo ""
+            echo '```bash'
+            echo "sha256sum -c SHA256SUMS.txt --ignore-missing"
+            echo '```'
+          } > release-notes.md
+
+          cat release-notes.md
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.check.outputs.tag }}
+          IS_PRERELEASE: ${{ needs.check.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          flags=(--title "Lucy ${TAG}" --notes-file release-notes.md --target "${GITHUB_SHA}")
+          if [ "${IS_PRERELEASE}" = "true" ]; then
+            flags+=(--prerelease)
+          else
+            flags+=(--latest)
+          fi
+          gh release create "${TAG}" "${flags[@]}" dist/*
+
+      - name: Summary
+        env:
+          TAG: ${{ needs.check.outputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          {
+            echo "### Published [${TAG}](https://github.com/${REPO}/releases/tag/${TAG})"
+            echo ""
+            echo "Permanent download link:"
+            echo ""
+            echo "\`https://github.com/${REPO}/releases/latest/download/lucy-latest.apk\`"
+          } >> "$GITHUB_STEP_SUMMARY"
