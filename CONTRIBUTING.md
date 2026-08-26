@@ -183,6 +183,13 @@ Anything touching the agent loop, screen capture or gestures needs a **real devi
 - ✅ Behaviour changes come with a note on how they were verified
 - ✅ It doesn't add a dependency without discussion
 
+### Don't bump the version
+
+Leave `version:` in `pubspec.yaml` alone — changing it on `main` publishes a
+release. Put user-visible changes under `## [Unreleased]` in
+[`CHANGELOG.md`](CHANGELOG.md) instead, and a maintainer will roll them into the
+next version. See [docs/RELEASING.md](docs/RELEASING.md).
+
 ---
 
 ## 💬 Commit messages
