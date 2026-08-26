@@ -162,8 +162,7 @@ Installing is only the beginning; Lucy is inert until she has her permissions an
 > [!WARNING]
 > Release APKs are currently signed with a **debug key**, so the signature isn't stable between builds. If you already have Lucy installed, **uninstall her before installing a newer version** — otherwise Android refuses the update with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`. See [docs/RELEASING.md](docs/RELEASING.md#signing).
 
-> [!NOTE]
-> Would rather build it yourself and read the code first? That's the [Quick Start](#-quick-start) below — very reasonable, given what Lucy is allowed to do.
+Would rather build it yourself and read the code first? That's the [Quick Start](#-quick-start) below — very reasonable, given what Lucy is allowed to do.
 
 ---
 
@@ -357,9 +356,9 @@ Lucy also stops herself automatically after **50 steps** on a single command, so
 
 ### Published releases are automatic
 
-Nobody builds or uploads an APK by hand. [`.github/workflows/release.yml`](.github/workflows/release.yml) watches `main`, and when the `version:` in [`pubspec.yaml`](pubspec.yaml) changes it analyzes, tests, builds and publishes a GitHub Release with every APK attached.
+Nobody builds or uploads an APK by hand. [`.github/workflows/release.yml`](.github/workflows/release.yml) watches `main` and reads the `version:` in [`pubspec.yaml`](pubspec.yaml). When the semantic part — everything before the `+` — has no matching `vX.Y.Z` tag yet, it analyzes, tests, builds and publishes a GitHub Release with every APK attached.
 
-The version bump is the trigger — merges that don't touch it produce no release. Full details, including how to cut one, live in **[docs/RELEASING.md](docs/RELEASING.md)**.
+So the version bump is the trigger, not the merge: merges that leave it alone produce no release, and bumping only the build number after the `+` doesn't either. Full details, including how to cut one, live in **[docs/RELEASING.md](docs/RELEASING.md)**.
 
 ### Building a release APK locally
 

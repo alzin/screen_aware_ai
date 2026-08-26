@@ -185,7 +185,8 @@ Anything touching the agent loop, screen capture or gestures needs a **real devi
 
 ### Don't bump the version
 
-Leave `version:` in `pubspec.yaml` alone — changing it on `main` publishes a
+Leave `version:` in `pubspec.yaml` alone. Landing a new semantic version — the
+part before the `+`, with no matching `vX.Y.Z` tag yet — on `main` publishes a
 release. Put user-visible changes under `## [Unreleased]` in
 [`CHANGELOG.md`](CHANGELOG.md) instead, and a maintainer will roll them into the
 next version. See [docs/RELEASING.md](docs/RELEASING.md).

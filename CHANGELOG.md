@@ -51,7 +51,7 @@ from GitHub, everything below is new to you.
 
 **Getting it, and working on it**
 
-- 📦 **Downloadable APKs**, published automatically by GitHub Actions whenever the version in `pubspec.yaml` changes on `main` — universal plus per-ABI builds, with SHA-256 checksums. `lucy-latest.apk` is a permanent link to the newest stable build. See [docs/RELEASING.md](docs/RELEASING.md)
+- 📦 **Downloadable APKs**, published automatically by GitHub Actions whenever a new semantic version lands in `pubspec.yaml` on `main` — universal plus per-ABI builds, with SHA-256 checksums. `lucy-latest.apk` is a permanent link to the newest stable build. See [docs/RELEASING.md](docs/RELEASING.md)
 - 🎬 **Demo video** in the README, showing Lucy composing and sending an email by voice
 - 📖 Open source documentation set: `README`, `CONTRIBUTING`, `CODE_OF_CONDUCT`, `SECURITY`, `docs/ARCHITECTURE.md` and `docs/RELEASING.md`
 - 📄 MIT `LICENSE`

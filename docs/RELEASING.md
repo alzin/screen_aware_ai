@@ -121,7 +121,7 @@ install instructions, the privacy warning, and a signing note.
 Because `lucy-latest.apk` keeps the same file name across releases, this URL
 never changes and always redirects to the newest **stable** build:
 
-```
+```text
 https://github.com/alzin/lucy-screen-agent/releases/latest/download/lucy-latest.apk
 ```
 

@@ -1,10 +1,11 @@
 name: Release
 
-# Publishes a GitHub Release with downloadable APKs whenever the version in
-# pubspec.yaml changes on main (i.e. when a PR that bumps it is merged).
+# Publishes a GitHub Release with downloadable APKs whenever a new semantic
+# version lands in pubspec.yaml on main (i.e. when a PR that bumps it is merged).
 #
-# The version bump is the trigger, not the merge itself: pushes to main that
-# leave `version:` alone are ignored, so ordinary merges never cut a release.
+# The version bump is the trigger, not the merge itself: pushes to main whose
+# `version:` already has a matching vX.Y.Z tag are ignored, so ordinary merges
+# never cut a release. Bumping only the +buildNumber does not release either.
 # See docs/RELEASING.md.
 
 on:
@@ -97,7 +98,9 @@ jobs:
   release:
     name: Build and publish
     needs: check
-    if: needs.check.outputs.should_release == 'true'
+    # workflow_dispatch can be aimed at any ref, so pin publishing to main -
+    # otherwise a manual run on a feature branch could tag and release from it.
+    if: github.ref == 'refs/heads/main' && needs.check.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
