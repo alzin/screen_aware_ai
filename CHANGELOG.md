@@ -16,7 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- 🎬 The README demo is now an **inline video player** instead of a GIF. The clip is hosted on GitHub's asset CDN rather than committed to the repo, so a clone no longer carries it — and viewers get the full 68 seconds with sound and controls instead of a silent 13-second excerpt
 
 ---
 

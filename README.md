@@ -28,15 +28,13 @@
 
 ### 🎬 Lucy in action
 
-<img src="docs/media/lucy-demo.gif" alt="Lucy opening Gmail, filling in the recipient, subject and body, and sending an email — driven entirely by one spoken command" width="380">
+https://github.com/user-attachments/assets/2fd60821-7cae-42f9-aa20-763938b61d23
 
 > *"There's an e-mail called 'my manager' in my e-mail list. I want you to send an
 > e-mail with the subject 'Today's agenda' mentioning the team meeting at 10 AM."*
 
 Lucy finds the contact, opens the compose screen, fills in the recipient, subject
 and body, and sends it. Every tap and keystroke is hers.
-
-**[▶ Watch the full 68-second demo](https://github.com/alzin/lucy-screen-agent/raw/main/docs/media/lucy-demo.mp4)** *(MP4, 2.8 MB)*
 
 </div>
 
@@ -431,8 +429,7 @@ lucy-screen-agent/
 ├── test/                                  # Widget tests
 ├── docs/
 │   ├── ARCHITECTURE.md                    # Deep dive for contributors
-│   ├── RELEASING.md                       # How versions become downloadable APKs
-│   └── media/                             # Demo video, GIF and poster frame
+│   └── RELEASING.md                       # How versions become downloadable APKs
 └── .github/workflows/
     ├── ci.yml                             # Format, analyze, test, debug APK
     └── release.yml                        # Publishes a Release when the version bumps
